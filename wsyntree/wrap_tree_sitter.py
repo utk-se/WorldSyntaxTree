@@ -1,0 +1,81 @@
+
+from pathlib import Path
+
+from tree_sitter import Language, Parser
+import pygit2 as git
+
+from . import log
+from .localstorage import LocalCache
+from .constants import wsyntree_langs
+
+class TreeSitterAutoBuiltLanguage():
+    def __init__(self, lang):
+        self.lang = lang
+        self.parser = None
+        self.ts_language = None
+
+    def __repr__(self):
+        return f"TreeSitterAutoBuiltLanguage<{self.lang}>"
+
+    def _get_language_cache_dir(self):
+        lc_d = LocalCache.get_local_cache_dir() / self.lang
+        lc_d.mkdir(mode=0o770, exist_ok=True)
+        return lc_d
+
+    def _get_language_repo_path(self):
+        return self._get_language_cache_dir() / "tsrepo"
+
+    def _get_language_repo(self):
+        repodir = self._get_language_repo_path()
+        if not repodir.exists():
+            repodir.mkdir(mode=0o770)
+            log.debug(f"cloning treesitter repo for {self}")
+            return git.clone_repository(
+                wsyntree_langs[self.lang]["tsrepo"],
+                repodir.resolve()
+            )
+        else:
+            return git.discover_repository(
+                repodir.resolve()
+            )
+
+    def _get_language_library(self):
+        lib = self._get_language_cache_dir() / "language.so"
+        repo = self._get_language_repo()
+        repodir = self._get_language_repo_path()
+        if not lib.exists():
+            log.debug(f"building library for {self}")
+            Language.build_library(
+                str(lib.resolve()),
+                [repodir]
+            )
+        return lib
+
+    def _get_ts_language(self):
+        if self.ts_language is not None:
+            return self.ts_language
+        self.ts_language = Language(
+            self._get_language_library(),
+            self.lang
+        )
+        return self.ts_language
+
+    def _get_parser(self):
+        if self.parser is not None:
+            return self.parser
+        self.parser = Parser()
+        self.parser.set_language(self._get_ts_language())
+        return self.parser
+
+    ### NOTE public functions:
+
+    def get_parser(self):
+        return self._get_parser()
+
+    def parse_file(self, file):
+        if issubclass(type(file), Path):
+            return self._get_parser().parse(
+                file.open('rb').read()
+            )
+        else:
+            raise NotImplementedError(f"cannot understand file argument of type {type(file)}")

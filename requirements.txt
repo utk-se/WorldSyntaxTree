@@ -1,0 +1,4 @@
+dask[complete]
+tree_sitter
+coloredlogs
+pygit2
