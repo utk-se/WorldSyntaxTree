@@ -6,11 +6,11 @@ Language-agnostic parsing of World of Code repositories
 
 ### Collector
 
-In the context of this project, the 'collecter' refers to the backend portions of 'world of trees' that
+In the context of this project, the 'collector' refers to:
 
-* Collects source repositories and metadata from the 'World of Code' for parsing
+* Collection of source repositories and metadata from the 'World of Code' for parsing
 
-* An external tool such as [tree sitter](http://tree-sitter.github.io/tree-sitter/) is used to parse raw file input into a syntax tree. Specifically, we retrieve the type of token as well as the location in the file. We may discard or ignore information based on the file type or content at this stage.
+* An external tool such as [tree sitter](http://tree-sitter.github.io/tree-sitter/) is used to parse raw (potentially invalid) file input into a syntax tree. Specifically, we retrieve the type of token as well as the location in the file. We may discard or ignore information based on the file type or content at this stage.
 
 * The output of the parsing tool is then stored.translated to a queryable, tabular format. We are interested in representing the output as a Dask dataframe. See [dask](https://dask.org/)
 
