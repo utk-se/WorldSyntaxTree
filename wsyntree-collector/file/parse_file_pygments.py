@@ -4,7 +4,7 @@ import pathlib
 
 from pygments import token
 from pygments.token import Token
-
+import dask.dataframe as dd
 '''
 Utilities for plotting code features as a heatmap based on a
 code repository dataframe.
@@ -48,40 +48,36 @@ def get_tokens_for_file(filepath):
         except UnicodeDecodeError as e:
             return None
 
-'''
-Written to use pygments, however, it should apply to anything that has the format idx, type, val or len.
-Would be a bit more trivial if pygments indexed their data by line.
-The resulting array is going to be large, ideally results will be aggregated across all repos (just add the np arrays)
-TODO: replace any CRLF with LF
-'''
-def file_tokens_to_frequency_count(input_path, static_frequency_array=None, src_resolution_x=250,src_resolution_y=2000,
-        target_token_types=pygments.token.STANDARD_TYPES.keys(), 
+def pygment_tokens_to_2d(input_path,
+        include_token_types=pygments.token.STANDARD_TYPES.keys(), 
         exclude_token_types = [Token.Text.Whitespace, Token.Literal.String.Doc]):
+    '''
+    Written to use pygments, however, it should apply to anything that has the format idx, type, val or len.
+    Would be a bit more trivial if pygments indexed their data by line.
+    The resulting array is going to be large, ideally results will be aggregated across all repos (just add the np arrays)
+    TODO: replace any CRLF with LF
+    '''
 
-    raise NotImplementedError
+    # raise NotImplementedError
 
     tokens = get_tokens_for_file(input_path)
     if tokens is None:
         return None
 
-    token_types = list(set(target_token_types) - set(exclude_token_types))
+    token_types = list(set(include_token_types) - set(exclude_token_types))
+
+    # TODO: don't do a double pass on the file
     newline_indices = get_newline_indices(input_path)
-    pygment_token_ids = {k:i for i,k in enumerate(token_types)}
 
     y_start=0
-    # TODO: NOT IMPLEMENTED
-    df_dict = {}
-
     for (idx, tokentype, value) in get_tokens_for_file(input_path):
 
         # allow for inclusion/exclusion of token types
         if tokentype not in token_types:
             continue
-        # pass by newlines until we reach one that
-        # TODO: consider if idx == newline indices 
-        # lmao write a C program to get around the GIL
+
         while True:
-            if (y_start >= len(newline_indices)) or (y_start >= src_resolution_y):
+            if (y_start >= len(newline_indices)):
                 break
 
             if idx < newline_indices[y_start]:
@@ -101,11 +97,7 @@ def file_tokens_to_frequency_count(input_path, static_frequency_array=None, src_
         # TODO: consider idx+len == ending newline index
         # should be true when a newline is present in the value
         while True:
-            # check that the ending x fits in the dimension - as of now, this information is discarded
-            if x_end > src_resolution_x:
-                x_end = src_resolution_x
-
-            if (y_end >= len(newline_indices)) or (y_end >= src_resolution_y):
+            if (y_end >= len(newline_indices)):
                 break
 
             if idx + len(value) < newline_indices[y_end]:
@@ -115,10 +107,6 @@ def file_tokens_to_frequency_count(input_path, static_frequency_array=None, src_
             if y_end > 0:
                 x_end -= newline_indices[y_end-1]
 
-            # static_frequency_array[y_end][x_start:x_end, pygment_token_ids[tokentype]]+=1
-            x_start = 0
             y_end+=1
             
-        # static_frequency_array[y_end][x_start:x_end, pygment_token_ids[tokentype]]+=1
-
-    return None
+        yield (x_start, y_start, x_end, y_end, tokentype, value)
