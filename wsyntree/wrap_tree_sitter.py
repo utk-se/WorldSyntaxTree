@@ -1,7 +1,7 @@
 
 from pathlib import Path
 
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Parser, TreeCursor
 import pygit2 as git
 
 from . import log
@@ -77,5 +77,37 @@ class TreeSitterAutoBuiltLanguage():
             return self._get_parser().parse(
                 file.open('rb').read()
             )
+        elif issubclass(type(file), str):
+            return self._get_parser().parse(
+                open(file, 'rb').read()
+            )
         else:
             raise NotImplementedError(f"cannot understand file argument of type {type(file)}")
+
+class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
+    """Iterator wrapper for a TreeCursor
+
+    This iterates through every node of the tree in parsed order.
+
+    It yields one node of the tree at a time.
+    """
+    def __init__(self, cursor: TreeCursor):
+        self._cursor = cursor
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        next_child = self._cursor.goto_first_child()
+        if next_child == True:
+            return self._cursor.node
+        next_sibling = self._cursor.goto_next_sibling()
+        if next_sibling == True:
+            return self._cursor.node
+        # otherwise step to the parent:
+        while not self._cursor.goto_next_sibling():
+            goto_parent = self._cursor.goto_parent()
+            if goto_parent == False:
+                # finished iterating tree
+                raise StopIteration()
+        return self._cursor.node
