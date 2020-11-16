@@ -1,7 +1,8 @@
 
 from pathlib import Path
+from typing import AnyStr, Callable
 
-from tree_sitter import Language, Parser, TreeCursor
+from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
 
 from . import log
@@ -91,13 +92,17 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
 
     It yields one node of the tree at a time.
     """
-    def __init__(self, cursor: TreeCursor):
+    def __init__(
+            self, cursor: TreeCursor,
+            nodefilter: Callable[[Node], bool] = lambda x: True
+        ):
         self._cursor = cursor
+        self.nodefilter = nodefilter
 
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def _next_node_in_tree(self):
         next_child = self._cursor.goto_first_child()
         if next_child == True:
             return self._cursor.node
@@ -111,3 +116,9 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
                 # finished iterating tree
                 raise StopIteration()
         return self._cursor.node
+
+    def __next__(self) -> Node:
+        test_node = self._next_node_in_tree()
+        while not self.nodefilter(test_node):
+            test_node = self._next_node_in_tree()
+        return test_node

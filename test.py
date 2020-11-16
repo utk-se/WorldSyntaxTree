@@ -9,14 +9,12 @@ log.setLevel(log.DEBUG)
 python = TreeSitterAutoBuiltLanguage('python')
 javascript = TreeSitterAutoBuiltLanguage('javascript')
 
+pi = python.parse_file('./test.py')
 ji = javascript.parse_file(Path('./tests/stuff.js'))
 
-print(ji)
-
 cur = ji.walk()
-print(cur)
 
-cur = TreeSitterCursorIterator(cur)
+cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: x.is_named)
 print(cur)
 
 for node in cur:
