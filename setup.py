@@ -25,10 +25,10 @@ setup(
         "pygit2",
         "tree_sitter"
     ],
-    # entry_points={
-    #     'console_scripts': [
-    #         'wsyntree-test=tests.test'
-    #     ]
-    # },
+    entry_points={
+        'console_scripts': [
+            'wsyntree-collector=wsyntree_collector.__main__:__main__'
+        ]
+    },
     python_requires='>=3.6'
 )

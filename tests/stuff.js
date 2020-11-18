@@ -1,4 +1,6 @@
 
-function hello () {
-  console.log("hi");
+function hello (name) {
+  console.log("hi" + name);
 }
+
+hello("ben");
