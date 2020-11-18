@@ -21,6 +21,12 @@ def __main__():
         help="File to parse"
     )
     parser.add_argument(
+        "-o", "--output",
+        type=str,
+        help="File to write to",
+        default=None
+    )
+    parser.add_argument(
         "-v", "--verbose",
         help="Increase output verbosity",
         action="store_true"
@@ -37,6 +43,9 @@ def __main__():
 
     print(df)
     print(df.head())
+
+    if args.output:
+        df.to_csv(args.output, single_file=True)
 
 if __name__ == '__main__':
     __main__()
