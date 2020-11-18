@@ -102,7 +102,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
     def __iter__(self):
         return self
 
-    def _next_node_in_tree(self):
+    def _next_node_in_tree(self) -> Node:
         next_child = self._cursor.goto_first_child()
         if next_child == True:
             return self._cursor.node
