@@ -8,7 +8,8 @@ from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCur
 def build_dask_dataframe_for_file(lang: TreeSitterAutoBuiltLanguage, file: str):
     tree = lang.parse_file(file)
     cur = tree.walk()
-    cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: x.is_named)
+    # cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: x.is_named)
+    cur = TreeSitterCursorIterator(cur)
 
     log.debug(f"{cur}")
 
