@@ -39,9 +39,16 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    collector = WST_MongoTreeCollector(args.repo_url, args.db, force=args.force)
+    collector = WST_MongoTreeCollector(args.repo_url, args.db)
     collector.setup()
-    collector.collect_all()
+    try:
+        collector.collect_all()
+    except FileExistsError as e:
+        if args.force:
+            collector.delete_all_tree_data()
+            collector.collect_all()
+        else:
+            raise e
 
 if __name__ == '__main__':
     __main__()

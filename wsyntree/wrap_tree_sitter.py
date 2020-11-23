@@ -36,9 +36,10 @@ class TreeSitterAutoBuiltLanguage():
                 repodir.resolve()
             )
         else:
-            return git.discover_repository(
+            repopath=git.discover_repository(
                 repodir.resolve()
             )
+            return git.Repository(repopath)
 
     def _get_language_library(self):
         lib = self._get_language_cache_dir() / "language.so"

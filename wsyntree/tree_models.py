@@ -12,7 +12,7 @@ class Repository(Document):
 
 class File(Document):
     repo = LazyReferenceField(Repository, required=True)
-    path = StringField(required=True)
+    path = StringField(required=True, unique_with='repo')
     first_node = LazyReferenceField('Node')
 
 

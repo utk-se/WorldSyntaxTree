@@ -10,6 +10,7 @@ import mongoengine
 from wsyntree import log
 from wsyntree.tree_models import Repository, File, Node, NodeText
 from wsyntree.localstorage import LocalCache
+from wsyntree.utils import list_all_git_files, pushd
 
 
 class WST_MongoTreeCollector():
@@ -22,6 +23,9 @@ class WST_MongoTreeCollector():
         self._url_scheme = pr.scheme
         self._url_hostname = pr.hostname
         self._url_path = pr.path[1:]
+
+        self._tree_repo = None
+        self._tree_files = []
 
     ### NOTE private control functions:
 
@@ -46,6 +50,16 @@ class WST_MongoTreeCollector():
             )
             return git.Repository(repopath)
 
+    def _grow_file_by_path(self, path: Path):
+        """Grows a single File object without any Nodes"""
+        nf = File(
+            repo=self._tree_repo,
+            path=str(path)
+        )
+        nf.save()
+        # will update it's nodes later:
+        self._tree_files.append(nf)
+
     ### NOTE immutable properties
 
     def __repr__(self):
@@ -66,6 +80,24 @@ class WST_MongoTreeCollector():
 
     ### NOTE public control functions
 
+    def delete_all_tree_data(self):
+        """Delete all data in the tree associated with this repo object"""
+        self._tree_repo = Repository.objects.get(
+            clone_url=self.repo_url,
+            analyzed_commit=self._current_commit_hash
+        )
+        log.warn(f"clearing all tree data for {self} commit {self._tree_repo.analyzed_commit}")
+        files = File.objects(repo=self._tree_repo)
+
+        # TODO delete all nodes of the file
+
+        for f in files:
+            f.delete()
+        self._tree_repo.delete()
+        # done deleting everything:
+        self._tree_files = []
+        self._tree_repo = None
+
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""
         self._connect_mongoengine()
@@ -73,18 +105,14 @@ class WST_MongoTreeCollector():
 
     def grow_repo(self):
         """Populate the Repo object."""
+        log.info(f"{self} growing repo...")
         # check for existing:
         preexists = Repository.objects(
             clone_url=self.repo_url,
             analyzed_commit=self._current_commit_hash
         )
         if len(preexists) > 0:
-            if self._force:
-                self._tree_repo = preexists[0]
-                self._tree_repo.added_time = datetime.now(tz=timezone.utc)
-                self._tree_repo.save()
-            else:
-                raise FileExistsError(f"repo document already exists as {preexists[0].id} in tree")
+            raise FileExistsError(f"repo document already exists as {preexists[0].id} in tree")
         else:
             self._tree_repo = Repository(
                 clone_url=self.repo_url,
@@ -95,7 +123,12 @@ class WST_MongoTreeCollector():
 
     def grow_files(self):
         """Create File objects for the tree"""
-        log.warn("NotImplemented!")
+        assert self._tree_repo is not None
+        log.info(f"{self} growing files...")
+        with pushd(self._local_repo_path):
+            for p in list_all_git_files(self._get_git_repo()):
+                self._grow_file_by_path(p)
+        log.info(f"{self} grew {len(self._tree_files)} files")
 
     def grow_nodes(self):
         """Parse each file and generate it's nodes"""
