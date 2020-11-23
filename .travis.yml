@@ -8,8 +8,8 @@ python:
 sudo: false
 
 install:
+  - python -m pip install -r requirements.txt
   - python setup.py install
 
 script:
   - python tests/test.py -l javascript tests/stuff.js
-  - python tests/test.py -l python tests/stuff.py

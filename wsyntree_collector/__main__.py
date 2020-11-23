@@ -9,21 +9,21 @@ from wsyntree_collector.file.parse_file_treesitter import build_dask_dataframe_f
 def __main__():
     parser = argparse.ArgumentParser()
 
+    # parser.add_argument(
+    #     "-l", "--language",
+    #     type=str,
+    #     help="Language to parse",
+    #     required=True
+    # )
     parser.add_argument(
-        "-l", "--language",
+        "repo_url",
         type=str,
-        help="Language to parse",
-        required=True
+        help="URI for cloning the repository"
     )
     parser.add_argument(
-        "file_path",
+        "--db", "--database",
         type=str,
-        help="File to parse"
-    )
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        help="File to write to",
+        help="MongoDB connection string",
         default=None
     )
     parser.add_argument(
