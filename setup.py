@@ -23,7 +23,8 @@ setup(
     install_requires=[
         "coloredlogs",
         "pygit2",
-        "tree_sitter"
+        "tree_sitter",
+        "mongoengine"
     ],
     entry_points={
         'console_scripts': [
@@ -31,5 +32,5 @@ setup(
             'wsyntree-selector=wsyntree_selector.__main__:__main__'
         ]
     },
-    python_requires='>=3.6'
+    python_requires='>=3.8'
 )

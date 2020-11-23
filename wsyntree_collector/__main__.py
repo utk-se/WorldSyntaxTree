@@ -1,20 +1,22 @@
 
 import argparse
 
+import pygit2 as git
+
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
-from wsyntree_collector.file.parse_file_treesitter import build_dask_dataframe_for_file
+from wsyntree_collector.mongo_collector import WST_MongoTreeCollector
 
 def __main__():
     parser = argparse.ArgumentParser()
 
-    # parser.add_argument(
-    #     "-l", "--language",
-    #     type=str,
-    #     help="Language to parse",
-    #     required=True
-    # )
+    parser.add_argument(
+        "-f", "--force",
+        help="DANGEROUS - Ignore / overwrite existing documents - DANGEROUS",
+        required=True,
+        action='store_true'
+    )
     parser.add_argument(
         "repo_url",
         type=str,
@@ -24,7 +26,7 @@ def __main__():
         "--db", "--database",
         type=str,
         help="MongoDB connection string",
-        default=None
+        default="mongodb://localhost/wsyntree"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -37,15 +39,9 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    lang = TreeSitterAutoBuiltLanguage(args.language)
-
-    df = build_dask_dataframe_for_file(lang, args.file_path)
-
-    print(df)
-    print(df.head())
-
-    if args.output:
-        df.to_csv(args.output, single_file=True)
+    collector = WST_MongoTreeCollector(args.repo_url, args.db, force=args.force)
+    collector.setup()
+    collector.collect_all()
 
 if __name__ == '__main__':
     __main__()
