@@ -20,3 +20,8 @@ wsyntree_langs = {
         "file_ext": "\.rs$"
     }
 }
+
+wsyntree_file_to_lang = {}
+
+for k,v in wsyntree_langs.items():
+    wsyntree_file_to_lang[v['file_ext']] = k

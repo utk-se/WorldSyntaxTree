@@ -3,11 +3,13 @@ import functools
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
+from multiprocessing.pool import ThreadPool as Pool
 
 import pygit2 as git
 import mongoengine
 
 from wsyntree import log
+from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 from wsyntree.tree_models import Repository, File, Node, NodeText
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd
@@ -60,6 +62,57 @@ class WST_MongoTreeCollector():
         # will update it's nodes later:
         self._tree_files.append(nf)
 
+    def _grow_nodes_by_file(self, file: File):
+        """Grows the nodes for a single File"""
+        log.debug(f"growing nodes for {file}")
+
+        lang = get_TSABL_for_file(str(file))
+        if lang is None:
+            log.debug(f"no language available for {file}")
+            return
+        tree = lang.parse_file(file.path)
+
+        cursor = tree.walk()
+        # iteration loop
+        cur_tree_parent = None
+        prev_tree_node = None
+        while cursor.node is not None:
+            cur_node = cursor.node
+            nn = Node(
+                file=file,
+                name=cur_node.type if cur_node.is_named else "",
+                parent=cur_tree_parent,
+                children=[]
+            )
+            (nn.x1,nn.y1) = cur_node.start_point
+            (nn.x2,nn.y2) = cur_node.end_point
+            # log.debug(f"grew {cur_node}")
+            # TODO text storage
+            nn.save()
+            if cur_tree_parent is not None:
+                cur_tree_parent.children.append(nn)
+                cur_tree_parent.save()
+
+            # now determine where to move to next:
+            next_child = cursor.goto_first_child()
+            if next_child == True:
+                cur_tree_parent = nn
+                continue # cur_node to next_child
+            next_sibling = cursor.goto_next_sibling()
+            if next_sibling == True:
+                prev_tree_node = nn
+                continue # cur_node to next_sibling
+            # go up parents
+            while not cursor.goto_next_sibling():
+                goto_parent = cursor.goto_parent()
+                if goto_parent == False:
+                    # we are done.
+                    return goto_parent
+                else:
+                    nn = nn.parent.fetch()
+            cur_tree_parent = nn
+
+
     ### NOTE immutable properties
 
     def __repr__(self):
@@ -88,10 +141,12 @@ class WST_MongoTreeCollector():
         )
         log.warn(f"clearing all tree data for {self} commit {self._tree_repo.analyzed_commit}")
         files = File.objects(repo=self._tree_repo)
-
-        # TODO delete all nodes of the file
-
         for f in files:
+            # delete all nodes of the file
+            fnodes = Node.objects(file=f)
+            for n in fnodes:
+                n.delete()
+                # don't delete any NodeText, they might be multiple-user
             f.delete()
         self._tree_repo.delete()
         # done deleting everything:
@@ -132,7 +187,11 @@ class WST_MongoTreeCollector():
 
     def grow_nodes(self):
         """Parse each file and generate it's nodes"""
-        log.warn("NotImplemented!")
+
+        with pushd(self._local_repo_path):
+            # lots of files to analyze:
+            for f in self._tree_files:
+                self._grow_nodes_by_file(f)
 
     def collect_all(self):
         """Performs all collection steps for this instance."""

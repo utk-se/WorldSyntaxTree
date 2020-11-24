@@ -1,5 +1,6 @@
 
 import argparse
+from multiprocessing import Pool
 
 import pygit2 as git
 
@@ -14,7 +15,6 @@ def __main__():
     parser.add_argument(
         "-f", "--force",
         help="DANGEROUS - Ignore / overwrite existing documents - DANGEROUS",
-        required=True,
         action='store_true'
     )
     parser.add_argument(
@@ -33,6 +33,11 @@ def __main__():
         help="Increase output verbosity",
         action="store_true"
     )
+    parser.add_argument(
+        "--delete-only",
+        help="Delete contents of the database without regenerating",
+        action="store_true"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -41,6 +46,11 @@ def __main__():
 
     collector = WST_MongoTreeCollector(args.repo_url, args.db)
     collector.setup()
+
+    if args.delete_only:
+        collector.delete_all_tree_data()
+        return
+
     try:
         collector.collect_all()
     except FileExistsError as e:

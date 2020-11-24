@@ -1,13 +1,15 @@
 
 from pathlib import Path
 from typing import AnyStr, Callable
+import functools
+import re
 
 from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
 
 from . import log
 from .localstorage import LocalCache
-from .constants import wsyntree_langs
+from .constants import wsyntree_langs, wsyntree_file_to_lang
 
 class TreeSitterAutoBuiltLanguage():
     def __init__(self, lang):
@@ -123,3 +125,16 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         while not self.nodefilter(test_node):
             test_node = self._next_node_in_tree()
         return test_node
+
+
+@functools.lru_cache(maxsize=None)
+def get_cached_TSABL(lang: str):
+    return TreeSitterAutoBuiltLanguage(lang)
+
+def get_TSABL_for_file(file: str):
+    """Match the filename and get the respective TreeSitterAutoBuiltLanguage"""
+    for k,v in wsyntree_file_to_lang.items():
+        pattern = re.compile(k)
+        if re.search(pattern, file):
+            return get_cached_TSABL(v)
+    return None
