@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
     readme = f.read()
 
 setup(
-    name='WorldSyntaxTree Lib',
+    name='WorldSyntaxTree',
     version=mainmodule.__version__,
     description="WorldSyntaxTree common library",
     long_description=readme,
