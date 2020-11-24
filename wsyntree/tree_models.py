@@ -35,7 +35,8 @@ class Node(Document):
     meta = {
         'indexes': [
             'x1', 'x2', 'y1', 'y2',
-        ]
+        ],
+        'index_background': True,
     }
 
 
