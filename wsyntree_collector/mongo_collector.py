@@ -64,7 +64,6 @@ class WST_MongoTreeCollector():
 
     def _grow_nodes_by_file(self, file: File):
         """Grows the nodes for a single File"""
-        log.debug(f"growing nodes for {file}")
 
         lang = get_TSABL_for_file(str(file))
         if lang is None:
@@ -72,6 +71,7 @@ class WST_MongoTreeCollector():
             return
         tree = lang.parse_file(file.path)
 
+        log.debug(f"growing nodes for {file}")
         cursor = tree.walk()
         # iteration loop
         cur_tree_parent = None
