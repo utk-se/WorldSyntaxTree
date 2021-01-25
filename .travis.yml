@@ -11,4 +11,4 @@ install:
 
 script:
   - python tests/test.py -l javascript tests/stuff.js
-  - python tests/test.py -l javascript tests/stuff.py
+  - python tests/test.py -l python tests/stuff.py
