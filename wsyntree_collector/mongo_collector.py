@@ -144,9 +144,7 @@ class WST_MongoTreeCollector():
         for f in files:
             # delete all nodes of the file
             fnodes = Node.objects(file=f)
-            for n in fnodes:
-                n.delete()
-                # don't delete any NodeText, they might be multiple-user
+            fnodes.delete()
             f.delete()
         self._tree_repo.delete()
         # done deleting everything:
