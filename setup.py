@@ -24,7 +24,8 @@ setup(
         "coloredlogs",
         "pygit2",
         "tree_sitter",
-        "mongoengine"
+        "mongoengine",
+        "pyparsing"
     ],
     entry_points={
         'console_scripts': [
