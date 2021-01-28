@@ -2,8 +2,10 @@
 import argparse
 
 from wsyntree import log
+from wsyntree.utils import node_as_sexp
 
 from .sexpParser import sexp
+from .mongotree_matcher import find_nodes_by_query
 
 def __main__():
     parser = argparse.ArgumentParser()
@@ -27,6 +29,10 @@ def __main__():
     parsed_s_query = sexp.parseString(args.query)
 
     log.debug(parsed_s_query)
+
+    for n in find_nodes_by_query(parsed_s_query):
+        log.info(f"{n} in {n.file.fetch()}")
+        log.info(f"{node_as_sexp(n, maxdepth=3)}")
 
 if __name__ == '__main__':
     __main__()

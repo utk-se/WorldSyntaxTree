@@ -82,7 +82,8 @@ class WST_MongoTreeCollector():
                 file=file,
                 name=cur_node.type if cur_node.is_named else "",
                 parent=cur_tree_parent,
-                children=[]
+                children=[],
+                text=NodeText.get_or_create(cur_node.text.tobytes().decode())
             )
             (nn.x1,nn.y1) = cur_node.start_point
             (nn.x2,nn.y2) = cur_node.end_point
@@ -145,7 +146,7 @@ class WST_MongoTreeCollector():
             # delete all nodes of the file
             fnodes = Node.objects(file=f)
             fnodes.delete()
-            f.delete()
+        files.delete()
         self._tree_repo.delete()
         # done deleting everything:
         self._tree_files = []

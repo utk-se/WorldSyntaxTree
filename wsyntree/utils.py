@@ -22,3 +22,14 @@ def pushd(new_dir):
         yield
     finally:
         os.chdir(previous_dir)
+
+def node_as_sexp(node, *, maxdepth=None):
+    t = f"({node.name}"
+    if maxdepth is not None and maxdepth <= 0:
+        t += " ..."
+    elif node.children:
+        for child in node.children:
+            t += " "
+            t += node_as_sexp(child, maxdepth=maxdepth-1 if maxdepth else None)
+    t += ")"
+    return t

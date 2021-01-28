@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 
 from wsyntree import log
+from wsyntree.utils import node_as_sexp
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
 log.setLevel(log.DEBUG)
@@ -31,7 +32,11 @@ if __name__ == '__main__':
     cur = tree.walk()
     cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: x.is_named)
 
-    print(cur)
+    log.debug(cur)
+
+    root = cur.peek()
 
     for node in cur:
-        print(node)
+        log.info(node)
+
+    log.info(node_as_sexp(root))

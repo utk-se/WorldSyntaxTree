@@ -9,6 +9,38 @@ class Repository(Document):
     analyzed_commit = StringField(required=True, unique_with='clone_url')
     added_time = DateTimeField(required=True)
 
+# dedup type
+class NodeText(Document):
+    text = StringField(required=True)
+
+    @classmethod
+    def get_or_create(cls, text):
+        try:
+            return cls.objects.get(text=text)
+        except cls.DoesNotExist:
+            n = cls(text=text)
+            n.save()
+            return n
+
+    meta = {
+        'indexes': [
+            '#text',
+        ],
+        'index_background': True,
+    }
+
+# dedup type
+class LineInFile(Document):
+    text = StringField(required=True, unique=True)
+
+    @classmethod
+    def get_or_create(cls, text):
+        try:
+            return cls.get(text=text)
+        except cls.DoesNotExist:
+            n = cls(text=text)
+            n.save()
+            return n
 
 class File(Document):
     repo = LazyReferenceField(Repository, required=True, passthrough=True)
@@ -35,10 +67,11 @@ class Node(Document):
     meta = {
         'indexes': [
             'x1', 'x2', 'y1', 'y2',
+            'name',
         ],
         'index_background': True,
     }
 
-
-class NodeText(Document):
-    text = StringField(required=True, unique=True)
+    def __repr__(self):
+        return f"Node(id={self.id}, name={self.name}, {len(self.children)} children)"
+    __str__ = __repr__

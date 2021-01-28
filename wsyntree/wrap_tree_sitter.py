@@ -126,6 +126,10 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
             test_node = self._next_node_in_tree()
         return test_node
 
+    def peek(self) -> Node:
+        """Peek at the current node"""
+        return self._cursor.node
+
 
 @functools.lru_cache(maxsize=None)
 def get_cached_TSABL(lang: str):
