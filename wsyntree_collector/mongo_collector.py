@@ -108,7 +108,10 @@ class WST_MongoTreeCollector():
                 if goto_parent:
                     # we are done.
                     # nn = nn.parent.fetch()
-                    cur_tree_parent = cur_tree_parent.parent.fetch()
+                    if cur_tree_parent.parent:
+                        cur_tree_parent = cur_tree_parent.parent.fetch()
+                    else:
+                        cur_tree_parent = None
                 else:
                     return goto_parent
 
