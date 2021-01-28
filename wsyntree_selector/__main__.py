@@ -20,6 +20,11 @@ def __main__():
         help="Increase output verbosity",
         action="store_true"
     )
+    parser.add_argument(
+        "--node-text",
+        help="Show the text content of the matched nodes",
+        action="store_true"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -36,6 +41,8 @@ def __main__():
         log.info(f"{n} in {n.file.fetch()}")
         n_sexp = node_as_sexp(n, maxdepth=3, indent=2, show_start_coords=True)
         log.info(f"{n_sexp}")
+        if args.node_text:
+            log.info(f"{n.text.fetch()}")
         rl.append(n)
 
     log.info(f"{len(rl)} results returned")

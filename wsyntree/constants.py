@@ -17,7 +17,15 @@ wsyntree_langs = {
     },
     "rust": {
         "tsrepo": "https://github.com/tree-sitter/tree-sitter-rust.git",
-        "file_ext": "\.rs$"
+        "file_ext": "\.rs$",
+    },
+    "ruby": {
+        "tsrepo": "https://github.com/tree-sitter/tree-sitter-ruby.git",
+        "file_ext": "\.rb$",
+    },
+    "c-sharp": {
+        "tsrepo": "https://github.com/tree-sitter/tree-sitter-c-sharp.git",
+        "file_ext": "\.cs",
     }
 }
 

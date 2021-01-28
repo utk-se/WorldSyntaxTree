@@ -22,6 +22,9 @@ class NodeText(Document):
             n.save()
             return n
 
+    def __str__(self):
+        return self.text
+
     meta = {
         'indexes': [
             '#text',
