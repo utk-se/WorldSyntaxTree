@@ -17,6 +17,9 @@ setup(
     author_email='bklein3@vols.utk.edu',
     url='',
     # license='MIT',
+    # dependency_links = [
+    #     'http://github.com/utk-se/py-tree-sitter/tarball/master#egg=tree_sitter'
+    # ],
     packages=find_packages(exclude=['ez_setup', 'examples', 'tests', 'vendor', 'venv']),
     include_package_data=True,
     zip_safe=False,

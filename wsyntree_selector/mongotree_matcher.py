@@ -6,6 +6,7 @@ from wsyntree.tree_models import Node
 def node_matches(node, q):
     if node.name != q[0]:
         return False
+    # TODO match additional attributes of this node
     if len(q) == 1:
         return True
     else:

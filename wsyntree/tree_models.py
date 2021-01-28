@@ -48,7 +48,7 @@ class File(Document):
     first_node = LazyReferenceField('Node', passthrough=True)
 
     def __repr__(self):
-        return f"{self.repo.clone_url}@{self.repo.analyzed_commit}//{self.path}"
+        return f"File<{self.repo.clone_url}@{self.repo.analyzed_commit}//{self.path}, {self.id}>"
     __str__ = __repr__
 
 
@@ -73,5 +73,5 @@ class Node(Document):
     }
 
     def __repr__(self):
-        return f"Node(id={self.id}, name={self.name}, {len(self.children)} children)"
+        return f"Node(id={self.id}, name={self.name}, ({self.x1}, {self.y1} -> {self.x2}, {self.y2}), {len(self.children)} children)"
     __str__ = __repr__

@@ -65,7 +65,7 @@ class WST_MongoTreeCollector():
     def _grow_nodes_by_file(self, file: File):
         """Grows the nodes for a single File"""
 
-        lang = get_TSABL_for_file(str(file))
+        lang = get_TSABL_for_file(file.path)
         if lang is None:
             log.debug(f"no language available for {file}")
             return
@@ -75,15 +75,15 @@ class WST_MongoTreeCollector():
         cursor = tree.walk()
         # iteration loop
         cur_tree_parent = None
-        prev_tree_node = None
+        # prev_tree_node = None
         while cursor.node is not None:
             cur_node = cursor.node
             nn = Node(
                 file=file,
                 name=cur_node.type if cur_node.is_named else "",
+                text=NodeText.get_or_create(cur_node.text.tobytes().decode()),
                 parent=cur_tree_parent,
                 children=[],
-                text=NodeText.get_or_create(cur_node.text.tobytes().decode())
             )
             (nn.x1,nn.y1) = cur_node.start_point
             (nn.x2,nn.y2) = cur_node.end_point
@@ -101,17 +101,16 @@ class WST_MongoTreeCollector():
                 continue # cur_node to next_child
             next_sibling = cursor.goto_next_sibling()
             if next_sibling == True:
-                prev_tree_node = nn
                 continue # cur_node to next_sibling
             # go up parents
-            while not cursor.goto_next_sibling():
+            while cursor.goto_next_sibling() == False:
                 goto_parent = cursor.goto_parent()
-                if goto_parent == False:
+                if goto_parent:
                     # we are done.
-                    return goto_parent
+                    # nn = nn.parent.fetch()
+                    cur_tree_parent = cur_tree_parent.parent.fetch()
                 else:
-                    nn = nn.parent.fetch()
-            cur_tree_parent = nn
+                    return goto_parent
 
 
     ### NOTE immutable properties

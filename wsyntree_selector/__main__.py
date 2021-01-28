@@ -30,9 +30,15 @@ def __main__():
 
     log.debug(parsed_s_query)
 
-    for n in find_nodes_by_query(parsed_s_query):
+    r = find_nodes_by_query(parsed_s_query)
+    rl = []
+    for n in r:
         log.info(f"{n} in {n.file.fetch()}")
-        log.info(f"{node_as_sexp(n, maxdepth=3)}")
+        n_sexp = node_as_sexp(n, maxdepth=3, indent=2, show_start_coords=True)
+        log.info(f"{n_sexp}")
+        rl.append(n)
+
+    log.info(f"{len(rl)} results returned")
 
 if __name__ == '__main__':
     __main__()

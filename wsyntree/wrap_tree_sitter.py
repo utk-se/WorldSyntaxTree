@@ -101,6 +101,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         ):
         self._cursor = cursor
         self.nodefilter = nodefilter
+        self._depth = 0
 
     def __iter__(self):
         return self
@@ -108,6 +109,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
     def _next_node_in_tree(self) -> Node:
         next_child = self._cursor.goto_first_child()
         if next_child == True:
+            self._depth += 1
             return self._cursor.node
         next_sibling = self._cursor.goto_next_sibling()
         if next_sibling == True:
@@ -115,6 +117,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         # otherwise step to the parent:
         while not self._cursor.goto_next_sibling():
             goto_parent = self._cursor.goto_parent()
+            self._depth -= 1
             if goto_parent == False:
                 # finished iterating tree
                 raise StopIteration()
@@ -125,6 +128,10 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         while not self.nodefilter(test_node):
             test_node = self._next_node_in_tree()
         return test_node
+
+    @property
+    def depth(self) -> int:
+        return self._depth
 
     def peek(self) -> Node:
         """Peek at the current node"""

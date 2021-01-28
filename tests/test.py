@@ -8,6 +8,9 @@ from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCur
 
 log.setLevel(log.DEBUG)
 
+def str_tsnode(n):
+    return f"tsnode<{n.type}, {n.start_point}>"
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
@@ -37,6 +40,5 @@ if __name__ == '__main__':
     root = cur.peek()
 
     for node in cur:
-        log.info(node)
-
-    log.info(node_as_sexp(root))
+        log.debug(node)
+        log.info(f"{'  ' * cur.depth}{str_tsnode(node)}")
