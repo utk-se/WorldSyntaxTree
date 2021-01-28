@@ -106,13 +106,13 @@ class WST_MongoTreeCollector():
             while cursor.goto_next_sibling() == False:
                 goto_parent = cursor.goto_parent()
                 if goto_parent:
-                    # we are done.
-                    # nn = nn.parent.fetch()
+                    # reversing up the tree
                     if cur_tree_parent.parent:
                         cur_tree_parent = cur_tree_parent.parent.fetch()
                     else:
                         cur_tree_parent = None
                 else:
+                    # we are done iterating
                     return goto_parent
 
 
