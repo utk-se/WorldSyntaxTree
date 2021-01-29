@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 from multiprocessing.pool import ThreadPool as Pool
 import concurrent.futures
+import os
 
 import pygit2 as git
 import mongoengine
@@ -149,7 +150,7 @@ class WST_MongoTreeCollector():
         def del_nodes(f):
             Node.objects(file=f).delete()
             log.debug(f"deleted {f}")
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
             for f in files:
                 executor.submit(del_nodes, f)
         files.delete()
@@ -186,7 +187,7 @@ class WST_MongoTreeCollector():
         assert self._tree_repo is not None
         log.info(f"{self} growing files...")
         with pushd(self._local_repo_path):
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
                 executor.map(
                     self._grow_file_by_path,
                     list_all_git_files(self._get_git_repo()),
@@ -201,7 +202,7 @@ class WST_MongoTreeCollector():
 
         with pushd(self._local_repo_path):
             # lots of files to analyze:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
                 executor.map(
                     self._grow_nodes_by_file,
                     self._tree_files,
