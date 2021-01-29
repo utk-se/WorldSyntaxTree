@@ -146,10 +146,11 @@ class WST_MongoTreeCollector():
         )
         log.warn(f"clearing all tree data for {self} commit {self._tree_repo.analyzed_commit}")
         files = File.objects(repo=self._tree_repo)
-        for f in files:
-            # delete all nodes of the file
-            fnodes = Node.objects(file=f)
-            fnodes.delete()
+        def del_nodes(f):
+            Node.objects(file=f).delete()
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for f in files:
+                executor.submit(del_nodes, f)
         files.delete()
         self._tree_repo.delete()
         # done deleting everything:
@@ -200,8 +201,13 @@ class WST_MongoTreeCollector():
         with pushd(self._local_repo_path):
             # lots of files to analyze:
             with concurrent.futures.ProcessPoolExecutor() as executor:
-                for f in self._tree_files:
-                    executor.submit(self._grow_nodes_by_file, f)
+                executor.map(
+                    self._grow_nodes_by_file,
+                    self._tree_files,
+                    chunksize=100
+                )
+                # for f in self._tree_files:
+                #     executor.submit(self._grow_nodes_by_file, f)
 
     def collect_all(self):
         """Performs all collection steps for this instance."""
