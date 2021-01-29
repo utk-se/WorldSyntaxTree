@@ -18,6 +18,60 @@ from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd
 
 
+def _grow_nodes_by_file(file: File):
+    """Grows the nodes for a single File"""
+
+    lang = get_TSABL_for_file(file.path)
+    if lang is None:
+        log.debug(f"no language available for {file}")
+        return
+    tree = lang.parse_file(file.path)
+
+    log.debug(f"growing nodes for {file}")
+    cursor = tree.walk()
+    # iteration loop
+    cur_tree_parent = None
+    # prev_tree_node = None
+    while cursor.node is not None:
+        cur_node = cursor.node
+        nn = Node(
+            file=file,
+            name=cur_node.type if cur_node.is_named else "",
+            text=NodeText.get_or_create(cur_node.text.tobytes().decode()),
+            parent=cur_tree_parent,
+            children=[],
+        )
+        (nn.x1,nn.y1) = cur_node.start_point
+        (nn.x2,nn.y2) = cur_node.end_point
+        # log.debug(f"grew {cur_node}")
+        # TODO text storage
+        nn.save()
+        if cur_tree_parent is not None:
+            cur_tree_parent.children.append(nn)
+            cur_tree_parent.save()
+
+        # now determine where to move to next:
+        next_child = cursor.goto_first_child()
+        if next_child == True:
+            cur_tree_parent = nn
+            continue # cur_node to next_child
+        next_sibling = cursor.goto_next_sibling()
+        if next_sibling == True:
+            continue # cur_node to next_sibling
+        # go up parents
+        while cursor.goto_next_sibling() == False:
+            goto_parent = cursor.goto_parent()
+            if goto_parent:
+                # reversing up the tree
+                if cur_tree_parent.parent:
+                    cur_tree_parent = cur_tree_parent.parent.fetch()
+                else:
+                    cur_tree_parent = None
+            else:
+                # we are done iterating
+                return goto_parent
+
+
 class WST_MongoTreeCollector():
     def __init__(self, repo_url: str, database_conn: str, force=False):
         self.repo_url = repo_url
@@ -65,60 +119,6 @@ class WST_MongoTreeCollector():
         nf.save()
         # will update it's nodes later:
         self._tree_files.append(nf)
-
-    def _grow_nodes_by_file(self, file: File):
-        """Grows the nodes for a single File"""
-
-        lang = get_TSABL_for_file(file.path)
-        if lang is None:
-            log.debug(f"no language available for {file}")
-            return
-        tree = lang.parse_file(file.path)
-
-        log.debug(f"growing nodes for {file}")
-        cursor = tree.walk()
-        # iteration loop
-        cur_tree_parent = None
-        # prev_tree_node = None
-        while cursor.node is not None:
-            cur_node = cursor.node
-            nn = Node(
-                file=file,
-                name=cur_node.type if cur_node.is_named else "",
-                text=NodeText.get_or_create(cur_node.text.tobytes().decode()),
-                parent=cur_tree_parent,
-                children=[],
-            )
-            (nn.x1,nn.y1) = cur_node.start_point
-            (nn.x2,nn.y2) = cur_node.end_point
-            # log.debug(f"grew {cur_node}")
-            # TODO text storage
-            nn.save()
-            if cur_tree_parent is not None:
-                cur_tree_parent.children.append(nn)
-                cur_tree_parent.save()
-
-            # now determine where to move to next:
-            next_child = cursor.goto_first_child()
-            if next_child == True:
-                cur_tree_parent = nn
-                continue # cur_node to next_child
-            next_sibling = cursor.goto_next_sibling()
-            if next_sibling == True:
-                continue # cur_node to next_sibling
-            # go up parents
-            while cursor.goto_next_sibling() == False:
-                goto_parent = cursor.goto_parent()
-                if goto_parent:
-                    # reversing up the tree
-                    if cur_tree_parent.parent:
-                        cur_tree_parent = cur_tree_parent.parent.fetch()
-                    else:
-                        cur_tree_parent = None
-                else:
-                    # we are done iterating
-                    return goto_parent
-
 
     ### NOTE immutable properties
 
@@ -191,7 +191,7 @@ class WST_MongoTreeCollector():
         assert self._tree_repo is not None
         log.info(f"{self} growing files...")
         with pushd(self._local_repo_path):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
                 log.info(f"scanning git files...")
                 ret_futures = []
                 for p in tqdm(list_all_git_files(self._get_git_repo())):
@@ -215,7 +215,7 @@ class WST_MongoTreeCollector():
                 log.info(f"starting node jobs...")
                 ret_futures = []
                 for f in self._tree_files:
-                    ret_futures.append(executor.submit(self._grow_nodes_by_file, f))
+                    ret_futures.append(executor.submit(_grow_nodes_by_file, f))
                 log.info(f"analyzing files...")
                 for r in tqdm(ret_futures):
                     r.result()

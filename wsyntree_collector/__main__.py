@@ -1,6 +1,7 @@
 
 import argparse
 from multiprocessing import Pool
+import sys
 
 import pygit2 as git
 
@@ -67,6 +68,8 @@ def __main__():
             collector.collect_all()
         else:
             raise e
+    except KeyboardInterrupt:
+        sys.exit(1)
 
 if __name__ == '__main__':
     __main__()
