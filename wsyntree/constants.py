@@ -19,10 +19,10 @@ wsyntree_langs = {
         "tsrepo": "https://github.com/tree-sitter/tree-sitter-rust.git",
         "file_ext": "\.rs$",
     },
-    "ruby": {
-        "tsrepo": "https://github.com/tree-sitter/tree-sitter-ruby.git",
-        "file_ext": "\.rb$",
-    },
+    # "ruby": {
+    #     "tsrepo": "https://github.com/tree-sitter/tree-sitter-ruby.git",
+    #     "file_ext": "\.rb$",
+    # },
     # "csharp": {
     #     "tsrepo": "https://github.com/tree-sitter/tree-sitter-c-sharp.git",
     #     "file_ext": "\.cs$",
