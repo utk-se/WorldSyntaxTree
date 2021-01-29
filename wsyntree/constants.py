@@ -38,6 +38,10 @@ wsyntree_langs = {
     "go": {
         "tsrepo": "https://github.com/tree-sitter/tree-sitter-go.git",
         "file_ext": "\.go$",
+    },
+    "java": {
+        "tsrepo": "https://github.com/tree-sitter/tree-sitter-java.git",
+        "file_ext": "\.java$",
     }
 }
 

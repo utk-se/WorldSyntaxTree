@@ -185,8 +185,13 @@ class WST_MongoTreeCollector():
         log.info(f"{self} growing files...")
         with pushd(self._local_repo_path):
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                for p in list_all_git_files(self._get_git_repo()):
-                    executor.submit(self._grow_file_by_path, p)
+                executor.map(
+                    self._grow_file_by_path,
+                    list_all_git_files(self._get_git_repo()),
+                    chunksize=100
+                )
+                # for p in list_all_git_files(self._get_git_repo()):
+                #     executor.submit(self._grow_file_by_path, p)
         log.info(f"{self} grew {len(self._tree_files)} files")
 
     def grow_nodes(self):

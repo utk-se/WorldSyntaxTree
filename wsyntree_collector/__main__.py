@@ -38,6 +38,11 @@ def __main__():
         help="Delete contents of the database without regenerating",
         action="store_true"
     )
+    parser.add_argument(
+        "--skip-exists",
+        help="Exit without error if the repo document is already present",
+        action="store_true"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -54,6 +59,9 @@ def __main__():
     try:
         collector.collect_all()
     except FileExistsError as e:
+        if args.skip_exists:
+            log.info(f"Skipping: document already present.")
+            return
         if args.force:
             collector.delete_all_tree_data()
             collector.collect_all()
