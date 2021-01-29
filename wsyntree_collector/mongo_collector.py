@@ -35,7 +35,8 @@ class WST_MongoTreeCollector():
     def _connect_mongoengine(self):
         log.debug(f"connecting mongodb...")
         mongoengine.connect(
-            host=self.database_conn_str
+            host=self.database_conn_str,
+            connect=False
         )
 
     def _get_git_repo(self):
@@ -193,7 +194,7 @@ class WST_MongoTreeCollector():
 
         with pushd(self._local_repo_path):
             # lots of files to analyze:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
                 for f in self._tree_files:
                     executor.submit(self._grow_nodes_by_file, f)
 
