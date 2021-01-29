@@ -28,7 +28,8 @@ setup(
         "pygit2",
         "tree_sitter",
         "mongoengine",
-        "pyparsing"
+        "pyparsing",
+        "tqdm"
     ],
     entry_points={
         'console_scripts': [

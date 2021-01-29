@@ -69,8 +69,8 @@ class Node(Document):
 
     meta = {
         'indexes': [
-            'x1', 'x2', 'y1', 'y2',
-            'name',
+            # 'x1', 'x2', 'y1', 'y2',
+            'name', 'parent',
         ],
         'index_background': True,
     }

@@ -9,6 +9,7 @@ import os
 
 import pygit2 as git
 import mongoengine
+from tqdm import tqdm
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
@@ -149,10 +150,13 @@ class WST_MongoTreeCollector():
         files = File.objects(repo=self._tree_repo)
         def del_nodes(f):
             Node.objects(file=f).delete()
-            log.debug(f"deleted {f}")
+        log.debug(f"deleting file nodes...")
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            ret_futures = []
             for f in files:
-                executor.submit(del_nodes, f)
+                ret_futures.append(executor.submit(del_nodes, f))
+            for r in tqdm(ret_futures):
+                r.result()
         files.delete()
         self._tree_repo.delete()
         # done deleting everything:
@@ -187,14 +191,14 @@ class WST_MongoTreeCollector():
         assert self._tree_repo is not None
         log.info(f"{self} growing files...")
         with pushd(self._local_repo_path):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-                executor.map(
-                    self._grow_file_by_path,
-                    list_all_git_files(self._get_git_repo()),
-                    chunksize=100
-                )
-                # for p in list_all_git_files(self._get_git_repo()):
-                #     executor.submit(self._grow_file_by_path, p)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                log.info(f"scanning git files...")
+                ret_futures = []
+                for p in tqdm(list_all_git_files(self._get_git_repo())):
+                    ret_futures.append(executor.submit(self._grow_file_by_path, p))
+                log.info(f"writing file documents to db...")
+                for r in tqdm(ret_futures):
+                    r.result()
         log.info(f"{self} grew {len(self._tree_files)} files")
 
     def grow_nodes(self):
@@ -203,13 +207,18 @@ class WST_MongoTreeCollector():
         with pushd(self._local_repo_path):
             # lots of files to analyze:
             with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-                executor.map(
-                    self._grow_nodes_by_file,
-                    self._tree_files,
-                    chunksize=100
-                )
-                # for f in self._tree_files:
-                #     executor.submit(self._grow_nodes_by_file, f)
+                # executor.map(
+                #     self._grow_nodes_by_file,
+                #     self._tree_files,
+                #     chunksize=1
+                # )
+                log.info(f"starting node jobs...")
+                ret_futures = []
+                for f in self._tree_files:
+                    ret_futures.append(executor.submit(self._grow_nodes_by_file, f))
+                log.info(f"analyzing files...")
+                for r in tqdm(ret_futures):
+                    r.result()
 
     def collect_all(self):
         """Performs all collection steps for this instance."""
