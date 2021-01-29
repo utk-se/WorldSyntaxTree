@@ -148,6 +148,7 @@ class WST_MongoTreeCollector():
         files = File.objects(repo=self._tree_repo)
         def del_nodes(f):
             Node.objects(file=f).delete()
+            log.debug(f"deleted {f}")
         with concurrent.futures.ProcessPoolExecutor() as executor:
             for f in files:
                 executor.submit(del_nodes, f)
