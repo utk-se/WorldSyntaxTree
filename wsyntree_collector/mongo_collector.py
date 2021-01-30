@@ -205,19 +205,28 @@ class WST_MongoTreeCollector():
         """Parse each file and generate it's nodes"""
 
         with pushd(self._local_repo_path):
+            # # lots of files to analyze:
+            # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+            #     log.info(f"filtering files to analyze ...")
+            #     files_to_grow = []
+            #     for f in tqdm(self._tree_files):
+            #         lang = get_TSABL_for_file(f.path)
+            #         if lang is None:
+            #             log.debug(f"no language available for {f}")
+            #             continue
+            #         else:
+            #             files_to_grow.append(f)
+            #     log.info(f"starting node jobs ...")
+            #     ret_futures = []
+            #     for f in tqdm(files_to_grow):
+            #         ret_futures.append(executor.submit(self._grow_nodes_by_file, f))
+            #     # log.info(f"analyzing files...")
+            #     # for r in tqdm(ret_futures):
+            #     #     r.result()
             # lots of files to analyze:
             with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-                log.info(f"starting node jobs...")
-                ret_futures = []
-                for f in tqdm(self._tree_files):
-                    lang = get_TSABL_for_file(f.path)
-                    if lang is None:
-                        log.debug(f"no language available for {f}")
-                        continue
-                    ret_futures.append(executor.submit(self._grow_nodes_by_file, f))
-                log.info(f"analyzing files...")
-                for r in tqdm(ret_futures):
-                    r.result()
+                for f in self._tree_files:
+                    executor.submit(self._grow_nodes_by_file, f)
 
     def collect_all(self):
         """Performs all collection steps for this instance."""
