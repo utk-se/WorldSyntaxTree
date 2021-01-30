@@ -30,7 +30,6 @@ setup(
         "mongoengine",
         "pyparsing",
         "tqdm",
-        "Pebble"
     ],
     entry_points={
         'console_scripts': [
