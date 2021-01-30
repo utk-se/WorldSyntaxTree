@@ -27,9 +27,10 @@ setup(
         "coloredlogs",
         "pygit2",
         "tree_sitter",
-        "mongoengine",
+        "py2neo",
         "pyparsing",
         "tqdm",
+        "Pebble"
     ],
     entry_points={
         'console_scripts': [

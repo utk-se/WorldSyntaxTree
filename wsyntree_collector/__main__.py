@@ -8,16 +8,11 @@ import pygit2 as git
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
-from wsyntree_collector.mongo_collector import WST_MongoTreeCollector
+from wsyntree_collector.neo4j_collector import WST_Neo4jTreeCollector
 
 def __main__():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "-f", "--force",
-        help="DANGEROUS - Ignore / overwrite existing documents - DANGEROUS",
-        action='store_true'
-    )
     parser.add_argument(
         "repo_url",
         type=str,
@@ -26,8 +21,8 @@ def __main__():
     parser.add_argument(
         "--db", "--database",
         type=str,
-        help="MongoDB connection string",
-        default="mongodb://localhost/wsyntree"
+        help="Neo4j connection string",
+        default="bolt://localhost:7687"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -35,13 +30,8 @@ def __main__():
         action="store_true"
     )
     parser.add_argument(
-        "--delete-only",
-        help="Delete contents of the database without regenerating",
-        action="store_true"
-    )
-    parser.add_argument(
-        "--skip-exists",
-        help="Exit without error if the repo document is already present",
+        "--delete",
+        help="Delete the repo from the database before running",
         action="store_true"
     )
     args = parser.parse_args()
@@ -50,26 +40,18 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    collector = WST_MongoTreeCollector(args.repo_url, args.db)
+    collector = WST_Neo4jTreeCollector(args.repo_url, args.db)
     collector.setup()
 
-    if args.delete_only:
+    if args.delete:
         collector.delete_all_tree_data()
         return
 
     try:
         collector.collect_all()
-    except FileExistsError as e:
-        if args.skip_exists:
-            log.info(f"Skipping: document already present.")
-            return
-        if args.force:
-            collector.delete_all_tree_data()
-            collector.collect_all()
-        else:
-            raise e
     except KeyboardInterrupt:
-        sys.exit(1)
+        log.warn(f"cancelling collector...")
+        collector.cancel()
 
 if __name__ == '__main__':
     __main__()

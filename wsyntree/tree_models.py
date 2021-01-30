@@ -1,80 +1,57 @@
 
-from mongoengine import Document
-from mongoengine.fields import *
+from py2neo import ogm
+from py2neo.ogm import Model, Property, Label, RelatedFrom, RelatedTo
 
 
-class Repository(Document):
-    # url/hash combo is unique
-    clone_url = URLField(required=True)
-    analyzed_commit = StringField(required=True, unique_with='clone_url')
-    added_time = DateTimeField(required=True)
+class SCM_Host(Model):
+    """e.g. GitHub"""
+    __primarykey__ = 'host'
+    name = Property("name")
+    host = Property("host")
 
-# dedup type
-class NodeText(Document):
-    text = StringField(required=True)
+    repos = RelatedFrom("WSTRepository")
+
+class WSTRepository(Model):
+    __primarykey__ = 'url'
+    type = Property("type") # e.g. git
+    url = Property("url")
+    path = Property("path")
+    analyzed_commit = Property("hash")
+    analyzed_time = Property("analysis_timestamp")
+
+    host = RelatedTo(SCM_Host)
+
+    files = RelatedFrom("File")
+
+class File(Model):
+    path = Property("path")
+    error = Property("error") # storage of parse failures, etc.
+
+    repo = RelatedTo(WSTRepository)
+
+    nodes = RelatedFrom("WSTNode")
+
+class WSTText(Model):
+    text = Property("text")
+
+    used_by = RelatedFrom("WSTNode")
 
     @classmethod
     def get_or_create(cls, text):
-        try:
-            return cls.objects.get(text=text)
-        except cls.DoesNotExist:
-            n = cls(text=text)
-            n.save()
-            return n
+        # TODO
+        raise NotImplementedError()
 
-    def __str__(self):
-        return self.text
+class WSTNode(Model):
+    start_row = Property("x1")
+    start_col = Property("y1")
+    end_row = Property("x2")
+    end_col = Property("y2")
 
-    meta = {
-        'indexes': [
-            '#text',
-        ],
-        'index_background': True,
-    }
+    named = Label()
+    type = Property("type")
 
-# dedup type
-class LineInFile(Document):
-    text = StringField(required=True, unique=True)
+    file = RelatedTo(File)
+    parent = RelatedTo("WSTNode")
+    text = RelatedTo(WSTText)
 
-    @classmethod
-    def get_or_create(cls, text):
-        try:
-            return cls.get(text=text)
-        except cls.DoesNotExist:
-            n = cls(text=text)
-            n.save()
-            return n
-
-class File(Document):
-    repo = LazyReferenceField(Repository, required=True, passthrough=True)
-    path = StringField(required=True, unique_with='repo')
-    first_node = LazyReferenceField('Node', passthrough=True)
-
-    def __repr__(self):
-        return f"File<{self.repo.clone_url}@{self.repo.analyzed_commit}//{self.path}, {self.id}>"
-    __str__ = __repr__
-
-
-class Node(Document):
-    file = LazyReferenceField(File, required=True, passthrough=True)
-    name = StringField(required=True) # TODO IntField encoding for space?
-    parent = LazyReferenceField('Node', passthrough=True)
-    children = ListField(LazyReferenceField('Node', passthrough=True))
-    text = LazyReferenceField('NodeText', passthrough=True)
-
-    x1 = IntField(required=True)
-    x2 = IntField(required=True)
-    y1 = IntField(required=True)
-    y2 = IntField(required=True)
-
-    meta = {
-        'indexes': [
-            # 'x1', 'x2', 'y1', 'y2',
-            'name', 'parent',
-        ],
-        'index_background': True,
-    }
-
-    def __repr__(self):
-        return f"Node(id={self.id}, name={self.name}, ({self.x1}, {self.y1} -> {self.x2}, {self.y2}), {len(self.children)} children)"
-    __str__ = __repr__
+    children = RelatedFrom("WSTNode")

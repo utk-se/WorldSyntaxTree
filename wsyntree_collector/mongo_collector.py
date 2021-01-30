@@ -191,7 +191,7 @@ class WST_MongoTreeCollector():
         assert self._tree_repo is not None
         log.info(f"{self} growing files...")
         with pushd(self._local_repo_path):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
                 log.info(f"scanning git files...")
                 ret_futures = []
                 for p in tqdm(list_all_git_files(self._get_git_repo())):
