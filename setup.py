@@ -27,7 +27,7 @@ setup(
         "coloredlogs",
         "pygit2",
         "tree_sitter",
-        "py2neo",
+        "neomodel",
         "pyparsing",
         "tqdm",
         "Pebble"

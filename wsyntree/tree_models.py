@@ -1,57 +1,55 @@
 
-from py2neo import ogm
-from py2neo.ogm import Model, Property, Label, RelatedFrom, RelatedTo
+from neomodel import (
+    config, StructuredNode,
+    StringProperty, IntegerProperty, UniqueIdProperty, DateTimeProperty,
+    BooleanProperty,
+    RelationshipTo, RelationshipFrom,
+)
+from neomodel.cardinality import ZeroOrOne, ZeroOrMore, One, OneOrMore
 
 
-class SCM_Host(Model):
+class SCM_Host(StructuredNode):
     """e.g. GitHub"""
-    __primarykey__ = 'host'
-    name = Property("name")
-    host = Property("host")
+    name = StringProperty()
+    host = StringProperty(unique_index=True, required=True)
 
-    repos = RelatedFrom("WSTRepository")
+    repos = RelationshipFrom("WSTRepository", 'HOSTED_ON')
 
-class WSTRepository(Model):
-    __primarykey__ = 'url'
-    type = Property("type") # e.g. git
-    url = Property("url")
-    path = Property("path")
-    analyzed_commit = Property("hash")
-    analyzed_time = Property("analysis_timestamp")
+class WSTRepository(StructuredNode):
+    type = StringProperty() # e.g. git
+    url = StringProperty(unique_index=True, required=True)
+    path = StringProperty(required=True)
+    analyzed_commit = StringProperty()
+    analyzed_time = DateTimeProperty()
 
-    host = RelatedTo(SCM_Host)
+    host = RelationshipTo(SCM_Host, 'HOSTED_ON', cardinality=One)
 
-    files = RelatedFrom("File")
+    files = RelationshipFrom("File", 'IN_REPO')
 
-class File(Model):
-    path = Property("path")
-    error = Property("error") # storage of parse failures, etc.
+class File(StructuredNode):
+    path = StringProperty(required=True)
+    error = StringProperty() # storage of parse failures, etc.
 
-    repo = RelatedTo(WSTRepository)
+    repo = RelationshipTo(WSTRepository, 'IN_REPO', cardinality=One)
 
-    nodes = RelatedFrom("WSTNode")
+    wstnodes = RelationshipFrom("WSTNode", 'IN_FILE')
 
-class WSTText(Model):
-    text = Property("text")
+class WSTText(StructuredNode):
+    text = StringProperty(unique_index=True, required=True)
 
-    used_by = RelatedFrom("WSTNode")
+    used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
-    @classmethod
-    def get_or_create(cls, text):
-        # TODO
-        raise NotImplementedError()
+class WSTNode(StructuredNode):
+    x1 = IntegerProperty(index=True, required=True)
+    y1 = IntegerProperty(index=True, required=True)
+    x2 = IntegerProperty(index=True, required=True)
+    y2 = IntegerProperty(index=True, required=True)
 
-class WSTNode(Model):
-    start_row = Property("x1")
-    start_col = Property("y1")
-    end_row = Property("x2")
-    end_col = Property("y2")
+    named = BooleanProperty(index=True, required=True)
+    type = StringProperty(index=True)
 
-    named = Label()
-    type = Property("type")
+    file =   RelationshipTo(File, 'IN_FILE')
+    parent = RelationshipTo("WSTNode", 'PARENT')
+    text =   RelationshipTo(WSTText, 'CONTENT')
 
-    file = RelatedTo(File)
-    parent = RelatedTo("WSTNode")
-    text = RelatedTo(WSTText)
-
-    children = RelatedFrom("WSTNode")
+    children = RelationshipFrom("WSTNode", 'PARENT')

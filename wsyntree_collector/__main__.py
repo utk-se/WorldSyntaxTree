@@ -4,6 +4,7 @@ from multiprocessing import Pool
 import sys
 
 import pygit2 as git
+from neomodel import config as neoconfig
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
@@ -22,7 +23,7 @@ def __main__():
         "--db", "--database",
         type=str,
         help="Neo4j connection string",
-        default="bolt://localhost:7687"
+        default="bolt://neo4j:neo4j@localhost:7687"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -40,7 +41,8 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    collector = WST_Neo4jTreeCollector(args.repo_url, args.db)
+    neoconfig.DATABASE_URL = args.db
+    collector = WST_Neo4jTreeCollector(args.repo_url)
     collector.setup()
 
     if args.delete:
