@@ -29,7 +29,8 @@ setup(
         "tree_sitter",
         "mongoengine",
         "pyparsing",
-        "tqdm"
+        "tqdm",
+        "Pebble"
     ],
     entry_points={
         'console_scripts': [
