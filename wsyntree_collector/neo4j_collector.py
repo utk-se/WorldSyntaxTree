@@ -118,7 +118,7 @@ class WST_Neo4jTreeCollector():
                         _process_file,
                         (p, self._tree_repo)
                     ))
-                log.info(f"processing files ...")
+                log.info(f"processing files with {self._worker_count} workers ...")
                 for r in tqdm(ret_futures):
                     try:
                         r.result()
