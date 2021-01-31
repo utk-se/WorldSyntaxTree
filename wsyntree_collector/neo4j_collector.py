@@ -108,7 +108,7 @@ class WST_Neo4jTreeCollector():
         # file-level processing
         file_paths = []
         with pushd(self._local_repo_path):
-            with ProcessPool(max_workers=os.cpu_count()) as executor:
+            with ProcessPool(max_workers=os.cpu_count()+2) as executor:
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []
@@ -118,7 +118,7 @@ class WST_Neo4jTreeCollector():
                         _process_file,
                         (p, self._tree_repo)
                     ))
-                log.info(f"writing file documents to db ...")
+                log.info(f"processing files ...")
                 for r in tqdm(ret_futures):
                     try:
                         r.result()
