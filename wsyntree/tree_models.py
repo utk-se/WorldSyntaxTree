@@ -29,6 +29,7 @@ class WSTRepository(StructuredNode):
 class File(StructuredNode):
     path = StringProperty(required=True)
     error = StringProperty() # storage of parse failures, etc.
+    language = StringProperty()
 
     repo = RelationshipTo(WSTRepository, 'IN_REPO', cardinality=One)
 

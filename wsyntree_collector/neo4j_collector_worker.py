@@ -20,6 +20,9 @@ def _process_file(path: Path, tree_repo: WSTRepository):
         file.error = "NO_LANGUAGE"
         file.save()
         return
+    else:
+        file.language = lang.lang
+        file.save()
     tree = lang.parse_file(file.path)
 
     # log.debug(f"growing nodes for {file}")
