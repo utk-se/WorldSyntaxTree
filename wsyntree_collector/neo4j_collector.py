@@ -23,7 +23,7 @@ from .neo4j_collector_worker import _process_file
 
 
 class WST_Neo4jTreeCollector():
-    def __init__(self, repo_url: str):
+    def __init__(self, repo_url: str, *, workers: int = None):
         self.repo_url = repo_url
         # self.database_conn_str = database_conn
 
@@ -35,7 +35,7 @@ class WST_Neo4jTreeCollector():
         self._tree_scm_host = None
         self._tree_repo = None
 
-        # self._file_paths = Queue()
+        self._worker_count = workers or os.cpu_count()
 
     ### NOTE private control functions:
 
@@ -108,7 +108,7 @@ class WST_Neo4jTreeCollector():
         # file-level processing
         file_paths = []
         with pushd(self._local_repo_path):
-            with ProcessPool(max_workers=os.cpu_count()+2) as executor:
+            with ProcessPool(max_workers=self._worker_count) as executor:
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []

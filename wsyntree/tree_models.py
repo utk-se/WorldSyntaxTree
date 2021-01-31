@@ -41,12 +41,12 @@ class WSTText(StructuredNode):
     used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
 class WSTNode(StructuredNode):
-    x1 = IntegerProperty(index=True, required=True)
-    y1 = IntegerProperty(index=True, required=True)
-    x2 = IntegerProperty(index=True, required=True)
-    y2 = IntegerProperty(index=True, required=True)
+    x1 = IntegerProperty(required=True)
+    y1 = IntegerProperty(required=True)
+    x2 = IntegerProperty(required=True)
+    y2 = IntegerProperty(required=True)
 
-    named = BooleanProperty(index=True, required=True)
+    named = BooleanProperty(required=True)
     type = StringProperty(index=True)
 
     file =   RelationshipTo(File, 'IN_FILE')

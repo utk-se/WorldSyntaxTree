@@ -5,6 +5,7 @@ import sys
 
 import pygit2 as git
 from neomodel import config as neoconfig
+import neomodel
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
@@ -35,6 +36,12 @@ def __main__():
         help="Delete the repo from the database before running",
         action="store_true"
     )
+    parser.add_argument(
+        "-w", "--workers",
+        type=int,
+        help="Number of workers to use for processing files, default: os.cpu_count()",
+        default=None
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -42,7 +49,7 @@ def __main__():
         log.debug("Verbose logging enabled.")
 
     neoconfig.DATABASE_URL = args.db
-    collector = WST_Neo4jTreeCollector(args.repo_url)
+    collector = WST_Neo4jTreeCollector(args.repo_url, workers=args.workers)
     collector.setup()
 
     if args.delete:
@@ -51,6 +58,9 @@ def __main__():
 
     try:
         collector.collect_all()
+    except neomodel.exceptions.UniqueProperty as e:
+        log.err(f"{collector} already has data in the db")
+        raise e
     except KeyboardInterrupt:
         log.warn(f"cancelling collector...")
         collector.cancel()
