@@ -16,7 +16,7 @@ def _process_file(path: Path, tree_repo: WSTRepository):
 
     lang = get_TSABL_for_file(file.path)
     if lang is None:
-        log.debug(f"no language available for {file}")
+        # log.debug(f"no language available for {file}")
         file.error = "NO_LANGUAGE"
         file.save()
         return
