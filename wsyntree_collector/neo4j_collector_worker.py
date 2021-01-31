@@ -11,18 +11,20 @@ def _process_file(path: Path, tree_repo: WSTRepository):
     file = File(
         path=str(path)
     )
-    file.save()
-    file.repo.connect(tree_repo)
+    # file.save()
 
     lang = get_TSABL_for_file(file.path)
     if lang is None:
         # log.debug(f"no language available for {file}")
         file.error = "NO_LANGUAGE"
         file.save()
+        file.repo.connect(tree_repo)
         return
     else:
         file.language = lang.lang
         file.save()
+        file.repo.connect(tree_repo)
+
     tree = lang.parse_file(file.path)
 
     # log.debug(f"growing nodes for {file}")
