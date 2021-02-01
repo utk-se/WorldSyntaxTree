@@ -10,7 +10,8 @@ import neomodel
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
-from wsyntree_collector.neo4j_collector import WST_Neo4jTreeCollector
+from . import neo4j_db as wst_neo4jdb
+from .neo4j_collector import WST_Neo4jTreeCollector
 
 def __main__():
     parser = argparse.ArgumentParser()
@@ -49,6 +50,13 @@ def __main__():
         log.debug("Verbose logging enabled.")
 
     neoconfig.DATABASE_URL = args.db
+
+    if '://' not in args.repo_url:
+        if args.repo_url == "install_indexes":
+            wst_neo4jdb.setup_indexes()
+            log.info(f"creation of indexes complete.")
+            return
+
     collector = WST_Neo4jTreeCollector(args.repo_url, workers=args.workers)
     collector.setup()
 

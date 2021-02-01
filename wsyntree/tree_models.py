@@ -36,9 +36,16 @@ class File(StructuredNode):
     wstnodes = RelationshipFrom("WSTNode", 'IN_FILE')
 
 class WSTText(StructuredNode):
-    text = StringProperty(unique_index=True, required=True)
+    length = IntegerProperty(required=True)
 
     used_by = RelationshipFrom("WSTNode", 'CONTENT')
+
+class WSTUniqueText(WSTText):
+    text = StringProperty(unique_index=True, required=True)
+
+class WSTHugeText(WSTText):
+    """Node for storing text content too large to be indexed."""
+    text = StringProperty(index=False, required=True)
 
 class WSTNode(StructuredNode):
     x1 = IntegerProperty(required=True)

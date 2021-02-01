@@ -5,7 +5,7 @@ import neo4j
 
 from wsyntree import log
 from wsyntree.tree_models import (
-    SCM_Host, WSTRepository, File, WSTNode, WSTText
+    SCM_Host, WSTRepository, File, WSTNode, WSTText, WSTUniqueText, WSTHugeText
 )
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
@@ -49,16 +49,20 @@ def _process_file(path: Path, tree_repo: WSTRepository):
             nn.parent.connect(cur_tree_parent)
         # text storage
         try:
-            text = WSTText.get_or_create({
-                'text': cur_node.text.tobytes().decode()
+            decoded_content = cur_node.text.tobytes().decode()
+            nt_type = WSTUniqueText if len(decoded_content) <= 4e3 else WSTHugeText
+            text = nt_type.get_or_create({
+                'text': decoded_content,
+                'length': len(decoded_content)
             })[0]
             nn.text.connect(text)
         except neo4j.exceptions.DatabaseError as e:
             # Neo4j imposes an internal hard limit of 4039 bytes to string properties
             # https://neo4j.com/docs/operations-manual/current/performance/index-configuration/#index-configuration-btree-limitations-key-sizes
-            log.debug(f"{file}:{nn} text content not stored")
+            log.error(f"{file}:{nn} text content not stored: {e}")
             file.error = "WST_TEXT_STORE_FAILED"
             file.save()
+            raise e
         except UnicodeDecodeError as e:
             log.warn(f"{file}:{nn} failed to decode content")
             file.error = "UNICODE_DECODE_ERROR"
