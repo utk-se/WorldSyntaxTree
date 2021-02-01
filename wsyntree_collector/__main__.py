@@ -2,6 +2,7 @@
 import argparse
 from multiprocessing import Pool
 import sys
+import os
 
 import pygit2 as git
 from neomodel import config as neoconfig
@@ -24,8 +25,7 @@ def __main__():
     parser.add_argument(
         "--db", "--database",
         type=str,
-        help="Neo4j connection string",
-        default="bolt://neo4j:neo4j@localhost:7687"
+        help="Neo4j connection string"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -49,7 +49,10 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    neoconfig.DATABASE_URL = args.db
+    if args.db:
+        neoconfig.DATABASE_URL = args.db
+    elif "NEO4J_BOLT_URL" in os.environ:
+        neoconfig.DATABASE_URL = os.environ["NEO4J_BOLT_URL"]
 
     if '://' not in args.repo_url:
         if args.repo_url == "install_indexes":

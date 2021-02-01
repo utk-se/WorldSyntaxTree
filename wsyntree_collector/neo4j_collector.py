@@ -14,7 +14,7 @@ from pebble import ProcessPool, ThreadPool
 
 from wsyntree import log
 from wsyntree.tree_models import (
-    SCM_Host, WSTRepository, File, WSTNode, WSTText
+    SCM_Host, WSTRepository, WSTFile, WSTNode, WSTText
 )
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd

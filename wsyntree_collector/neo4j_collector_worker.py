@@ -5,13 +5,13 @@ import neo4j
 
 from wsyntree import log
 from wsyntree.tree_models import (
-    SCM_Host, WSTRepository, File, WSTNode, WSTText, WSTUniqueText, WSTHugeText
+    SCM_Host, WSTRepository, WSTFile, WSTNode, WSTText, WSTUniqueText, WSTHugeText
 )
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
 
 def _process_file(path: Path, tree_repo: WSTRepository):
-    file = File(
+    file = WSTFile(
         path=str(path)
     )
     # file.save()

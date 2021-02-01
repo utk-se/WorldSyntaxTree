@@ -7,6 +7,11 @@ from neomodel import (
 )
 from neomodel.cardinality import ZeroOrOne, ZeroOrMore, One, OneOrMore
 
+__all__ = [
+    'SCM_Host', 'WSTRepository', 'WSTFile', 'WSTNode',
+    'WSTUniqueText', 'WSTHugeText', 'WSTText'
+]
+
 
 class SCM_Host(StructuredNode):
     """e.g. GitHub"""
@@ -24,9 +29,9 @@ class WSTRepository(StructuredNode):
 
     host = RelationshipTo(SCM_Host, 'HOSTED_ON', cardinality=One)
 
-    files = RelationshipFrom("File", 'IN_REPO')
+    files = RelationshipFrom("WSTFile", 'IN_REPO')
 
-class File(StructuredNode):
+class WSTFile(StructuredNode):
     path = StringProperty(required=True)
     error = StringProperty() # storage of parse failures, etc.
     language = StringProperty()
@@ -56,7 +61,7 @@ class WSTNode(StructuredNode):
     named = BooleanProperty(required=True)
     type = StringProperty(index=True)
 
-    file =   RelationshipTo(File, 'IN_FILE')
+    file =   RelationshipTo(WSTFile, 'IN_FILE')
     parent = RelationshipTo("WSTNode", 'PARENT')
     text =   RelationshipTo(WSTText, 'CONTENT')
 

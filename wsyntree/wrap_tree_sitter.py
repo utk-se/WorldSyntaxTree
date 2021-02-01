@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import AnyStr, Callable
 import functools
 import re
+import pebble
 
 from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
@@ -16,6 +17,7 @@ class TreeSitterAutoBuiltLanguage():
         self.lang = lang
         self.parser = None
         self.ts_language = None
+        # self.ts_build_lock = multiprocessing.Lock()
 
     def __repr__(self):
         return f"TreeSitterAutoBuiltLanguage<{self.lang}>"
@@ -28,6 +30,7 @@ class TreeSitterAutoBuiltLanguage():
     def _get_language_repo_path(self):
         return self._get_language_cache_dir() / "tsrepo"
 
+    @pebble.synchronized
     def _get_language_repo(self):
         repodir = self._get_language_repo_path()
         if not repodir.exists():
@@ -43,6 +46,7 @@ class TreeSitterAutoBuiltLanguage():
             )
             return git.Repository(repopath)
 
+    @pebble.synchronized
     def _get_language_library(self):
         lib = self._get_language_cache_dir() / "language.so"
         repo = self._get_language_repo()
