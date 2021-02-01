@@ -48,13 +48,20 @@ def _process_file(path: Path, tree_repo: WSTRepository):
         if cur_tree_parent:
             nn.parent.connect(cur_tree_parent)
         # text storage
+        text = None
         try:
             decoded_content = cur_node.text.tobytes().decode()
-            nt_type = WSTUniqueText if len(decoded_content) <= 4e3 else WSTHugeText
-            text = nt_type.get_or_create({
-                'text': decoded_content,
-                'length': len(decoded_content)
-            })[0]
+            if len(decoded_content) <= 4e3:
+                text = WSTUniqueText.get_or_create({
+                    'text': decoded_content,
+                    'length': len(decoded_content)
+                })[0]
+            else:
+                text = WSTHugeText(
+                    text=decoded_content,
+                    length=len(decoded_content)
+                )
+                text.save()
             nn.text.connect(text)
         except neo4j.exceptions.DatabaseError as e:
             # Neo4j imposes an internal hard limit of 4039 bytes to string properties
