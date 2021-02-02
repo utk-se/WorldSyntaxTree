@@ -1,7 +1,10 @@
 
 from pathlib import Path
+import time
 
 import neo4j
+from tqdm import tqdm
+from pebble import concurrent
 
 from wsyntree import log
 from wsyntree.tree_models import (
@@ -9,12 +12,20 @@ from wsyntree.tree_models import (
 )
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
+@concurrent.thread
+def _tqdm_node_receiver(q):
+    log.debug(f"started counting added nodes from {q}")
+    with tqdm(desc="adding nodes to db", position=1) as tbar:
+        while q.get():
+            # time.sleep(0.1)
+            tbar.update(1)
+    log.debug(f"stopped counting nodes")
 
-def _process_file(path: Path, tree_repo: WSTRepository):
+
+def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
     file = WSTFile(
         path=str(path)
     )
-    # file.save()
 
     lang = get_TSABL_for_file(file.path)
     if lang is None:
@@ -22,7 +33,7 @@ def _process_file(path: Path, tree_repo: WSTRepository):
         file.error = "NO_LANGUAGE"
         file.save()
         file.repo.connect(tree_repo)
-        return
+        return file
     else:
         file.language = lang.lang
         file.save()
@@ -74,7 +85,10 @@ def _process_file(path: Path, tree_repo: WSTRepository):
             log.warn(f"{file}:{nn} failed to decode content")
             file.error = "UNICODE_DECODE_ERROR"
             file.save()
-            return
+            return file
+
+        if node_q:
+            node_q.put(nn)
 
         # now determine where to move to next:
         next_child = cursor.goto_first_child()
@@ -95,4 +109,4 @@ def _process_file(path: Path, tree_repo: WSTRepository):
                     cur_tree_parent = None
             else:
                 # we are done iterating
-                return goto_parent
+                return file

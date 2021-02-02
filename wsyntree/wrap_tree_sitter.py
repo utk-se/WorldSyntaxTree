@@ -30,7 +30,6 @@ class TreeSitterAutoBuiltLanguage():
     def _get_language_repo_path(self):
         return self._get_language_cache_dir() / "tsrepo"
 
-    @pebble.synchronized
     def _get_language_repo(self):
         repodir = self._get_language_repo_path()
         if not repodir.exists():
@@ -46,7 +45,6 @@ class TreeSitterAutoBuiltLanguage():
             )
             return git.Repository(repopath)
 
-    @pebble.synchronized
     def _get_language_library(self):
         lib = self._get_language_cache_dir() / "language.so"
         repo = self._get_language_repo()
@@ -142,6 +140,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         return self._cursor.node
 
 
+@pebble.synchronized
 @functools.lru_cache(maxsize=None)
 def get_cached_TSABL(lang: str):
     return TreeSitterAutoBuiltLanguage(lang)

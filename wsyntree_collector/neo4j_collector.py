@@ -3,9 +3,9 @@ import functools
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
-from multiprocessing import Queue
-from multiprocessing.pool import ThreadPool, Pool
-import concurrent.futures
+from multiprocessing import Queue, Manager
+# from multiprocessing.pool import ThreadPool, Pool
+import concurrent.futures as futures
 import os
 
 import pygit2 as git
@@ -19,7 +19,7 @@ from wsyntree.tree_models import (
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd
 
-from .neo4j_collector_worker import _process_file
+from .neo4j_collector_worker import _process_file, _tqdm_node_receiver
 
 
 class WST_Neo4jTreeCollector():
@@ -36,13 +36,10 @@ class WST_Neo4jTreeCollector():
         self._tree_repo = None
 
         self._worker_count = workers or os.cpu_count()
+        self._mp_manager = None
+        self._node_queue = None
 
     ### NOTE private control functions:
-
-    # def _connect_db(self):
-    #     log.debug(f"connecting neo4j graph ...")
-    #     self.graph = Graph(self.database_conn_str)
-    #     self.neorepo = py2neoRepo.wrap(self.graph)
 
     def _get_git_repo(self):
         repodir = self._local_repo_path
@@ -80,12 +77,6 @@ class WST_Neo4jTreeCollector():
 
     ### NOTE public control functions
 
-    def cancel(self):
-        if self._stoppable is not None:
-            self._stoppable.stop()
-        else:
-            log.warn(f"nothing to stop")
-
     def delete_all_tree_data(self):
         """Delete all data in the tree associated with this repo object"""
         # TODO
@@ -107,24 +98,35 @@ class WST_Neo4jTreeCollector():
 
         # file-level processing
         file_paths = []
-        with pushd(self._local_repo_path):
+        with pushd(self._local_repo_path), Manager() as self._mp_manager:
             with ProcessPool(max_workers=self._worker_count) as executor:
                 self._stoppable = executor
+                self._node_queue = self._mp_manager.Queue()
+                node_receiver = _tqdm_node_receiver(self._node_queue)
                 log.info(f"scanning git for files ...")
                 ret_futures = []
                 for p in tqdm(list_all_git_files(self._get_git_repo())):
                     file_paths.append(p)
                     ret_futures.append(executor.schedule(
                         _process_file,
-                        (p, self._tree_repo)
+                        (p, self._tree_repo),
+                        {'node_q': self._node_queue}
                     ))
                 log.info(f"processing files with {self._worker_count} workers ...")
-                for r in tqdm(ret_futures):
-                    try:
-                        r.result()
-                    except KeyboardInterrupt as e:
-                        self.cancel()
-                        raise e
+                try:
+                    for r in tqdm(futures.as_completed(ret_futures), total=len(ret_futures), desc="processing files"):
+                        nf = r.result()
+                        # log.debug(f"added {nf}")
+                except KeyboardInterrupt as e:
+                    log.warn(f"stopping collection ...")
+                    for rf in ret_futures:
+                        rf.cancel()
+                    executor.close()
+                    executor.join(1)
+                    executor.stop()
+                    self._node_queue.put(None)
+                    # raise e
+                # finally:
 
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""
