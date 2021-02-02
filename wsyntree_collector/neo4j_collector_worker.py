@@ -15,11 +15,12 @@ from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 @concurrent.thread
 def _tqdm_node_receiver(q):
     log.debug(f"started counting added nodes from {q}")
+    n = 0
     with tqdm(desc="adding nodes to db", position=1) as tbar:
         while q.get():
-            # time.sleep(0.1)
+            n += 1
             tbar.update(1)
-    log.debug(f"stopped counting nodes")
+    log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
 
 def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
@@ -88,7 +89,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
             return file
 
         if node_q:
-            node_q.put(nn)
+            node_q.put(1)
 
         # now determine where to move to next:
         next_child = cursor.goto_first_child()
