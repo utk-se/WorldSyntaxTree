@@ -122,7 +122,7 @@ class WST_Neo4jTreeCollector():
                     for rf in ret_futures:
                         rf.cancel()
                     executor.close()
-                    executor.join(1)
+                    executor.join(5)
                     executor.stop()
                     self._node_queue.put(None)
                     # raise e
