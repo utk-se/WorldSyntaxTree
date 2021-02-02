@@ -72,9 +72,6 @@ def __main__():
     except neomodel.exceptions.UniqueProperty as e:
         log.err(f"{collector} already has data in the db")
         raise e
-    # except KeyboardInterrupt:
-    #     log.warn(f"cancelling collector...")
-    #     collector.cancel()
 
 if __name__ == '__main__':
     __main__()
