@@ -62,7 +62,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
         text = None
         try:
             decoded_content = cur_node.text.tobytes().decode()
-            if len(decoded_content) <= 4e3:
+            if False and len(decoded_content) <= 4e3:
                 text = WSTUniqueText.get_or_create({
                     'text': decoded_content,
                     'length': len(decoded_content)
