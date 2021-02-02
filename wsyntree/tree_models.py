@@ -46,7 +46,7 @@ class WSTText(StructuredNode):
     used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
 class WSTIndexableText(WSTText):
-    text = StringProperty(unique_index=True, required=True)
+    text = StringProperty(index=True, required=True)
 
 class WSTHugeText(WSTText):
     """Node for storing text content too large to be indexed."""
