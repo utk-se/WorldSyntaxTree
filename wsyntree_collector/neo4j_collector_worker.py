@@ -12,7 +12,7 @@ from wsyntree.tree_models import (
 )
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
-@concurrent.thread
+@concurrent.process
 def _tqdm_node_receiver(q):
     log.debug(f"started counting added nodes from {q}")
     n = 0

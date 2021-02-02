@@ -99,10 +99,10 @@ class WST_Neo4jTreeCollector():
         # file-level processing
         file_paths = []
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
+            self._node_queue = self._mp_manager.Queue()
+            node_receiver = _tqdm_node_receiver(self._node_queue)
             with ProcessPool(max_workers=self._worker_count) as executor:
                 self._stoppable = executor
-                self._node_queue = self._mp_manager.Queue()
-                node_receiver = _tqdm_node_receiver(self._node_queue)
                 log.info(f"scanning git for files ...")
                 ret_futures = []
                 for p in tqdm(list_all_git_files(self._get_git_repo())):
@@ -126,7 +126,7 @@ class WST_Neo4jTreeCollector():
                     executor.stop()
                     self._node_queue.put(None)
                     # raise e
-                # finally:
+            self._node_queue.put(None)
 
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""
