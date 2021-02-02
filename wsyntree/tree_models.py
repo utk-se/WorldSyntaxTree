@@ -9,7 +9,7 @@ from neomodel.cardinality import ZeroOrOne, ZeroOrMore, One, OneOrMore
 
 __all__ = [
     'SCM_Host', 'WSTRepository', 'WSTFile', 'WSTNode',
-    'WSTUniqueText', 'WSTHugeText', 'WSTText'
+    'WSTIndexableText', 'WSTHugeText', 'WSTText'
 ]
 
 
@@ -45,7 +45,7 @@ class WSTText(StructuredNode):
 
     used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
-class WSTUniqueText(WSTText):
+class WSTIndexableText(WSTText):
     text = StringProperty(unique_index=True, required=True)
 
 class WSTHugeText(WSTText):

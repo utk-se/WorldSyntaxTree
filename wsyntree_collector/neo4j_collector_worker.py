@@ -8,7 +8,7 @@ from pebble import concurrent
 
 from wsyntree import log
 from wsyntree.tree_models import (
-    SCM_Host, WSTRepository, WSTFile, WSTNode, WSTText, WSTUniqueText, WSTHugeText
+    SCM_Host, WSTRepository, WSTFile, WSTNode, WSTText, WSTIndexableText, WSTHugeText
 )
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
@@ -17,9 +17,9 @@ def _tqdm_node_receiver(q):
     log.debug(f"started counting added nodes from {q}")
     n = 0
     with tqdm(desc="adding nodes to db", position=1) as tbar:
-        while q.get():
-            n += 1
-            tbar.update(1)
+        while nc := q.get():
+            n += nc
+            tbar.update(nc)
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
 
@@ -45,6 +45,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
     # log.debug(f"growing nodes for {file}")
     cursor = tree.walk()
     # iteration loop
+    nc = 0
     cur_tree_parent = None
     while cursor.node is not None:
         cur_node = cursor.node
@@ -60,20 +61,14 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
         if cur_tree_parent:
             nn.parent.connect(cur_tree_parent)
         # text storage
-        text = None
         try:
             decoded_content = cur_node.text.tobytes().decode()
-            if False and len(decoded_content) <= 4e3:
-                text = WSTUniqueText.get_or_create({
-                    'text': decoded_content,
-                    'length': len(decoded_content)
-                })[0]
-            else:
-                text = WSTHugeText(
-                    text=decoded_content,
-                    length=len(decoded_content)
-                )
-                text.save()
+            n_t = WSTIndexableText if len(decoded_content) <= 4e3 else WSTHugeText
+            text = n_t(
+                text=decoded_content,
+                length=len(decoded_content)
+            )
+            text.save()
             nn.text.connect(text)
         except neo4j.exceptions.DatabaseError as e:
             # Neo4j imposes an internal hard limit of 4039 bytes to string properties
@@ -88,8 +83,11 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
             file.save()
             return file
 
-        if node_q:
-            node_q.put(1)
+        # progress reporting: desired to evaluate node insertion performance
+        nc += 1
+        if node_q and nc % 100 == 0:
+            node_q.put(nc)
+            nc = 0
 
         # now determine where to move to next:
         next_child = cursor.goto_first_child()
@@ -110,4 +108,6 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
                     cur_tree_parent = None
             else:
                 # we are done iterating
+                if node_q:
+                    node_q.put(nc)
                 return file
