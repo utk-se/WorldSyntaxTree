@@ -17,7 +17,7 @@ def _tqdm_node_receiver(q):
     log.debug(f"started counting added nodes from {q}")
     n = 0
     with tqdm(desc="adding nodes to db", position=1) as tbar:
-        while nc := q.get():
+        while nc := q.get() is not None:
             n += nc
             tbar.update(nc)
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
