@@ -85,7 +85,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
 
         # progress reporting: desired to evaluate node insertion performance
         nc += 1
-        if node_q and nc % 100 == 0:
+        if node_q and nc >= 100:
             node_q.put(nc)
             nc = 0
 
