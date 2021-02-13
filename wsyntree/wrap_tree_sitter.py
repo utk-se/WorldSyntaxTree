@@ -1,19 +1,23 @@
 
 from pathlib import Path
 from typing import AnyStr, Callable
+import functools
+import re
+import pebble
 
 from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
 
 from . import log
 from .localstorage import LocalCache
-from .constants import wsyntree_langs
+from .constants import wsyntree_langs, wsyntree_file_to_lang
 
 class TreeSitterAutoBuiltLanguage():
     def __init__(self, lang):
         self.lang = lang
         self.parser = None
         self.ts_language = None
+        # self.ts_build_lock = multiprocessing.Lock()
 
     def __repr__(self):
         return f"TreeSitterAutoBuiltLanguage<{self.lang}>"
@@ -36,9 +40,10 @@ class TreeSitterAutoBuiltLanguage():
                 repodir.resolve()
             )
         else:
-            return git.discover_repository(
+            repopath=git.discover_repository(
                 repodir.resolve()
             )
+            return git.Repository(repopath)
 
     def _get_language_library(self):
         lib = self._get_language_cache_dir() / "language.so"
@@ -98,6 +103,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         ):
         self._cursor = cursor
         self.nodefilter = nodefilter
+        self._depth = 0
 
     def __iter__(self):
         return self
@@ -105,6 +111,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
     def _next_node_in_tree(self) -> Node:
         next_child = self._cursor.goto_first_child()
         if next_child == True:
+            self._depth += 1
             return self._cursor.node
         next_sibling = self._cursor.goto_next_sibling()
         if next_sibling == True:
@@ -112,6 +119,7 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         # otherwise step to the parent:
         while not self._cursor.goto_next_sibling():
             goto_parent = self._cursor.goto_parent()
+            self._depth -= 1
             if goto_parent == False:
                 # finished iterating tree
                 raise StopIteration()
@@ -122,3 +130,25 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
         while not self.nodefilter(test_node):
             test_node = self._next_node_in_tree()
         return test_node
+
+    @property
+    def depth(self) -> int:
+        return self._depth
+
+    def peek(self) -> Node:
+        """Peek at the current node"""
+        return self._cursor.node
+
+
+@pebble.synchronized
+@functools.lru_cache(maxsize=None)
+def get_cached_TSABL(lang: str):
+    return TreeSitterAutoBuiltLanguage(lang)
+
+def get_TSABL_for_file(file: str):
+    """Match the filename and get the respective TreeSitterAutoBuiltLanguage"""
+    for k,v in wsyntree_file_to_lang.items():
+        pattern = re.compile(k)
+        if re.search(pattern, file):
+            return get_cached_TSABL(v)
+    return None

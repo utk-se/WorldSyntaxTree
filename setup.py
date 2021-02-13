@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from setuptools import setup, find_packages
 
 import wsyntree as mainmodule
@@ -6,7 +8,7 @@ with open("README.md", "r") as f:
     readme = f.read()
 
 setup(
-    name='WorldSyntaxTree Lib',
+    name='WorldSyntaxTree',
     version=mainmodule.__version__,
     description="WorldSyntaxTree common library",
     long_description=readme,
@@ -17,13 +19,20 @@ setup(
     author_email='bklein3@vols.utk.edu',
     url='',
     # license='MIT',
-    packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
+    # dependency_links = [
+    #     'http://github.com/utk-se/py-tree-sitter/tarball/master#egg=tree_sitter'
+    # ],
+    packages=find_packages(exclude=['ez_setup', 'examples', 'tests', 'vendor', 'venv']),
     include_package_data=True,
     zip_safe=False,
     install_requires=[
         "coloredlogs",
         "pygit2",
-        "tree_sitter"
+        "tree_sitter",
+        "neomodel",
+        "pyparsing",
+        "tqdm",
+        "Pebble"
     ],
     entry_points={
         'console_scripts': [
@@ -31,5 +40,5 @@ setup(
             'wsyntree-selector=wsyntree_selector.__main__:__main__'
         ]
     },
-    python_requires='>=3.6'
+    python_requires='>=3.8'
 )

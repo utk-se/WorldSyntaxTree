@@ -1,35 +1,47 @@
 
 import argparse
+from multiprocessing import Pool
+import sys
+import os
+
+import pygit2 as git
+from neomodel import config as neoconfig
+import neomodel
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
-from wsyntree_collector.file.parse_file_treesitter import build_dask_dataframe_for_file
+from . import neo4j_db as wst_neo4jdb
+from .neo4j_collector import WST_Neo4jTreeCollector
 
 def __main__():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-l", "--language",
+        "repo_url",
         type=str,
-        help="Language to parse",
-        required=True
+        help="URI for cloning the repository"
     )
     parser.add_argument(
-        "file_path",
+        "--db", "--database",
         type=str,
-        help="File to parse"
-    )
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        help="File to write to",
-        default=None
+        help="Neo4j connection string"
     )
     parser.add_argument(
         "-v", "--verbose",
         help="Increase output verbosity",
         action="store_true"
+    )
+    parser.add_argument(
+        "--delete",
+        help="Delete the repo from the database before running",
+        action="store_true"
+    )
+    parser.add_argument(
+        "-w", "--workers",
+        type=int,
+        help="Number of workers to use for processing files, default: os.cpu_count()",
+        default=None
     )
     args = parser.parse_args()
 
@@ -37,15 +49,29 @@ def __main__():
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
 
-    lang = TreeSitterAutoBuiltLanguage(args.language)
+    if args.db:
+        neoconfig.DATABASE_URL = args.db
+    elif "NEO4J_BOLT_URL" in os.environ:
+        neoconfig.DATABASE_URL = os.environ["NEO4J_BOLT_URL"]
 
-    df = build_dask_dataframe_for_file(lang, args.file_path)
+    if '://' not in args.repo_url:
+        if args.repo_url == "install_indexes":
+            wst_neo4jdb.setup_indexes()
+            log.info(f"creation of indexes complete.")
+            return
 
-    print(df)
-    print(df.head())
+    collector = WST_Neo4jTreeCollector(args.repo_url, workers=args.workers)
+    collector.setup()
 
-    if args.output:
-        df.to_csv(args.output, single_file=True)
+    if args.delete:
+        collector.delete_all_tree_data()
+        return
+
+    try:
+        collector.collect_all()
+    except neomodel.exceptions.UniqueProperty as e:
+        log.err(f"{collector} already has data in the db")
+        raise e
 
 if __name__ == '__main__':
     __main__()
