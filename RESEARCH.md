@@ -42,7 +42,8 @@ RQ2: What is the visual shape of code?
  - All of these should be aggregated by language (as designated by the GitHub repo?)
 
 RQ3: What is in a line of code?
- - [ ] Comments: TODO
+ - [x] Comments: 
+   - `match pizza=(crust:WSTRepository)<-[:IN_REPO]-(cheese:WSTFile)<-[:IN_FILE]-(toppings:WSTNode)-[:CONTENT]->(sauce:WSTText) where toppings.type="comment" return crust, cheese, toppings limit 30`
  - [ ] Stats on frequency and associations between token types
  - [ ] Heatmaps showing different types of tokens?
 
