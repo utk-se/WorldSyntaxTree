@@ -61,8 +61,8 @@ class WSTNode(StructuredNode):
     named = BooleanProperty(required=True)
     type = StringProperty(index=True)
 
-    file =   RelationshipTo(WSTFile, 'IN_FILE')
-    parent = RelationshipTo("WSTNode", 'PARENT')
-    text =   RelationshipTo(WSTText, 'CONTENT')
+    file =   RelationshipTo(WSTFile, 'IN_FILE', cardinality=One)
+    parent = RelationshipTo("WSTNode", 'PARENT', cardinality=One)
+    text =   RelationshipTo(WSTText, 'CONTENT', cardinality=One)
 
     children = RelationshipFrom("WSTNode", 'PARENT')

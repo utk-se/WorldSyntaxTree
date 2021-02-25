@@ -29,6 +29,8 @@ def database_indexes(args):
         wst_neo4jdb.setup_indexes()
         log.info(f"creation of indexes complete.")
         return
+    else:
+        raise NotImplementedError()
 
 def __main__():
     parser = argparse.ArgumentParser()
@@ -53,7 +55,8 @@ def __main__():
     )
 
     # analysis
-    cmd_analyze = subcmds.add_parser('analyze', aliases=['add', 'a'], help="Analyze repositories")
+    cmd_analyze = subcmds.add_parser(
+        'analyze', aliases=['add', 'a'], help="Analyze repositories")
     cmd_analyze.set_defaults(func=analyze)
     cmd_analyze.add_argument(
         "repo_url",
@@ -67,9 +70,11 @@ def __main__():
         default=None
     )
     # db setup
-    cmd_db = subcmds.add_parser('db', aliases=['database'], help="Manage the Neo4j database")
+    cmd_db = subcmds.add_parser(
+        'db', aliases=['database'], help="Manage the Neo4j database")
     subcmds_db = cmd_db.add_subparsers(title="Control WST indexes")
-    cmd_db_index = subcmds.add_parser('index', aliases=['indexes', 'idx'], help="Manage Neo4j indexes")
+    cmd_db_index = subcmds.add_parser(
+        'index', aliases=['indexes', 'idx'], help="Manage Neo4j indexes")
     cmd_db_index.set_defaults(func=database_indexes)
     cmd_db_index.add_argument(
         'action',
