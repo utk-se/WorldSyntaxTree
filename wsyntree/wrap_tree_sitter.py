@@ -3,21 +3,24 @@ from pathlib import Path
 from typing import AnyStr, Callable
 import functools
 import re
-import pebble
 
+import pebble
 from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
+from filelock import FileLock, Timeout
 
 from . import log
 from .localstorage import LocalCache
 from .constants import wsyntree_langs, wsyntree_file_to_lang
+
 
 class TreeSitterAutoBuiltLanguage():
     def __init__(self, lang):
         self.lang = lang
         self.parser = None
         self.ts_language = None
-        # self.ts_build_lock = multiprocessing.Lock()
+        # use this lock when modifying the cachedir:
+        self.ts_lang_cache_lock = FileLock(self._get_language_cache_dir() / "tsabl.lock")
 
     def __repr__(self):
         return f"TreeSitterAutoBuiltLanguage<{self.lang}>"
@@ -32,30 +35,38 @@ class TreeSitterAutoBuiltLanguage():
 
     def _get_language_repo(self):
         repodir = self._get_language_repo_path()
-        if not repodir.exists():
-            repodir.mkdir(mode=0o770)
-            log.debug(f"cloning treesitter repo for {self}")
-            return git.clone_repository(
-                wsyntree_langs[self.lang]["tsrepo"],
-                repodir.resolve()
-            )
-        else:
-            repopath=git.discover_repository(
-                repodir.resolve()
-            )
-            return git.Repository(repopath)
+        try:
+            self.ts_lang_cache_lock.acquire(timeout=60)
+            if not repodir.exists():
+                repodir.mkdir(mode=0o770)
+                log.debug(f"cloning treesitter repo for {self}")
+                return git.clone_repository(
+                    wsyntree_langs[self.lang]["tsrepo"],
+                    repodir.resolve()
+                )
+            else:
+                repopath=git.discover_repository(
+                    repodir.resolve()
+                )
+                return git.Repository(repopath)
+        finally:
+            self.ts_lang_cache_lock.release()
 
     def _get_language_library(self):
-        lib = self._get_language_cache_dir() / "language.so"
-        repo = self._get_language_repo()
-        repodir = self._get_language_repo_path()
-        if not lib.exists():
-            log.debug(f"building library for {self}")
-            Language.build_library(
-                str(lib.resolve()),
-                [repodir]
-            )
-        return lib
+        try:
+            self.ts_lang_cache_lock.acquire(timeout=30)
+            lib = self._get_language_cache_dir() / "language.so"
+            repo = self._get_language_repo()
+            repodir = self._get_language_repo_path()
+            if not lib.exists():
+                log.debug(f"building library for {self}")
+                Language.build_library(
+                    str(lib.resolve()),
+                    [repodir]
+                )
+            return lib
+        finally:
+            self.ts_lang_cache_lock.release()
 
     def _get_ts_language(self):
         if self.ts_language is not None:
