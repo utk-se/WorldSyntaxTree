@@ -1,6 +1,7 @@
 
 from pathlib import Path
 import time
+import os
 
 import neo4j
 from tqdm import tqdm
@@ -23,7 +24,12 @@ def _tqdm_node_receiver(q):
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
 
-def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
+def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify_every: int=100):
+    """Runs one file's analysis from a repo.
+
+    node_q: push integers for counting number of added syntax nodes
+    notify_every: send integer to node_q at least `notify_every` nodes inserted
+    """
     file = WSTFile(
         path=str(path)
     )
@@ -85,7 +91,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None):
 
         # progress reporting: desired to evaluate node insertion performance
         nc += 1
-        if node_q and nc >= 100:
+        if node_q and nc >= notify_every:
             node_q.put(nc)
             nc = 0
 
