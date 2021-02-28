@@ -115,7 +115,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
 
     tree = lang.parse_file(file.path)
 
-    n4j_uri = urlparse(os.environ["NEO4J_BOLT_URL"] or "bolt://neo4j:neo4j@localhost:7687")
+    n4j_uri = urlparse(os.environ.get("NEO4J_BOLT_URL") or "bolt://neo4j:neo4j@localhost:7687")
     auth = (n4j_uri.username, n4j_uri.password) if n4j_uri.username else None
     uri_noauth = f"{n4j_uri.scheme}://{n4j_uri.hostname}:{n4j_uri.port}"
     # log.debug(f"parsed URI {uri_noauth}")
