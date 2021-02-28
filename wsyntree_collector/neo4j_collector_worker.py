@@ -97,15 +97,6 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     notify_every: send integer to node_q at least `notify_every` nodes inserted
     """
 
-    n4j_uri = urlparse(os.environ["NEO4J_BOLT_URL"])
-    auth = (n4j_uri.username, n4j_uri.password) if n4j_uri.username else None
-    uri_noauth = f"{n4j_uri.scheme}://{n4j_uri.hostname}:{n4j_uri.port}"
-    # log.debug(f"parsed URI {uri_noauth}")
-    driver = GraphDatabase.driver(
-        uri_noauth,
-        auth=auth,
-    )
-
     file = WSTFile(
         path=str(path)
     )
@@ -124,15 +115,24 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
 
     tree = lang.parse_file(file.path)
 
+    n4j_uri = urlparse(os.environ["NEO4J_BOLT_URL"])
+    auth = (n4j_uri.username, n4j_uri.password) if n4j_uri.username else None
+    uri_noauth = f"{n4j_uri.scheme}://{n4j_uri.hostname}:{n4j_uri.port}"
+    # log.debug(f"parsed URI {uri_noauth}")
+    driver = GraphDatabase.driver(
+        uri_noauth,
+        auth=auth,
+    )
+
     # log.debug(f"growing nodes for {file}")
     cursor = tree.walk()
     # iteration loop
     nc = 0
     # cur_tree_parent = None
-    parentid = None
+    # parentid = None
     parent_stack = []
     try:
-        with driver.session() as session, session.begin_transaction() as tx:
+        with driver.session() as session:
             # definitions: nn = new node, nt = new text, nc = node count
             while cursor.node is not None:
                 cur_node = cursor.node
@@ -143,8 +143,12 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 (nnd.x1,nnd.y1) = cur_node.start_point
                 (nnd.x2,nnd.y2) = cur_node.end_point
 
+                parentid = None
+                if len(parent_stack) > 0:
+                    parentid = parent_stack[-1]
+
                 # insert data into the database
-                with nullcontext():
+                with session.begin_transaction() as tx:
                     nnid = create_WSTNode(tx, nnd)
                     # nn.file.connect(file)
                     WSTNode_set_file(tx, nnid, file.id)
@@ -190,7 +194,6 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 next_child = cursor.goto_first_child()
                 if next_child == True:
                     # cur_tree_parent = nn
-                    parentid = nnid
                     parent_stack.append(nnid)
                     continue # cur_node to next_child
                 next_sibling = cursor.goto_next_sibling()
@@ -203,10 +206,9 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                         # reversing up the tree
                         if len(parent_stack) > 0:
                             # cur_tree_parent = cur_tree_parent.parent.get()
-                            parentid = parent_stack.pop()
+                            parent_stack.pop()
                         else:
-                            # cur_tree_parent = None
-                            parentid = None
+                            log.err(f"Bad tree iteration detected!")
                     else:
                         # we are done iterating
                         if node_q:
