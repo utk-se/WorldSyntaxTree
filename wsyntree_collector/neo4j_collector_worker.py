@@ -67,7 +67,7 @@ def WSTNode_set_file(tx, nodeid, fileid):
 
 def WSTNode_set_text(tx, nodeid, textid):
     result = tx.run(
-        """match (t), (n)
+        """match (n:WSTNode), (t:WSTText)
         where id(n) = $nodeid and id(t) = $textid
         create (n)-[r:CONTENT]->(t)
         return id(r) as rel_id""",
@@ -130,7 +130,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     nc = 0
     parent_stack = []
     try:
-        with driver.session() as session:
+        with driver.session() as session, session.begin_transaction() as tx:
             # definitions: nn = new node, nt = new text, nc = node count
             while cursor.node is not None:
                 cur_node = cursor.node
@@ -146,7 +146,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                     parentid = parent_stack[-1]
 
                 # insert data into the database
-                with session.begin_transaction() as tx:
+                with nullcontext():
                     nnid = create_WSTNode(tx, nnd)
                     WSTNode_set_file(tx, nnid, file.id)
 
