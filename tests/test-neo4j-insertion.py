@@ -73,4 +73,4 @@ if __name__ == '__main__':
         finally:
             _node_queue.put(None)
 
-    repo.delete()
+    # repo.delete()
