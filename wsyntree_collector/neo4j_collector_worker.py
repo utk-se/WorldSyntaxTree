@@ -100,7 +100,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     n4j_uri = urlparse(os.environ["NEO4J_BOLT_URL"])
     auth = (n4j_uri.username, n4j_uri.password) if n4j_uri.username else None
     uri_noauth = f"{n4j_uri.scheme}://{n4j_uri.hostname}:{n4j_uri.port}"
-    log.debug(f"parsed URI {uri_noauth}")
+    # log.debug(f"parsed URI {uri_noauth}")
     driver = GraphDatabase.driver(
         uri_noauth,
         auth=auth,
