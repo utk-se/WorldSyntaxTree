@@ -128,8 +128,6 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     cursor = tree.walk()
     # iteration loop
     nc = 0
-    # cur_tree_parent = None
-    # parentid = None
     parent_stack = []
     try:
         with driver.session() as session:
