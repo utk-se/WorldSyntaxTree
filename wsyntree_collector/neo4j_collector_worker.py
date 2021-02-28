@@ -148,31 +148,15 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 # insert data into the database
                 with session.begin_transaction() as tx:
                     nnid = create_WSTNode(tx, nnd)
-                    # nn.file.connect(file)
                     WSTNode_set_file(tx, nnid, file.id)
 
                     if parentid is not None:
-                        # nn.parent.connect(cur_tree_parent)
                         WSTNode_set_parent(tx, nnid, parentid)
                     # text storage
                     try:
                         decoded_content = cur_node.text.tobytes().decode()
-                        # n_t = WSTIndexableText if len(decoded_content) <= 4e3 else WSTHugeText
-                        # text = n_t(
-                        #     text=decoded_content,
-                        #     length=len(decoded_content)
-                        # )
-                        # text.save()
                         ntid = create_WSTText(tx, decoded_content)
-                        # nn.text.connect(text)
                         WSTNode_set_text(tx, nnid, ntid)
-                    # except neo4j.exceptions.DatabaseError as e:
-                    #     # Neo4j imposes an internal hard limit of 4039 bytes to string properties
-                    #     # https://neo4j.com/docs/operations-manual/current/performance/index-configuration/#index-configuration-btree-limitations-key-sizes
-                    #     log.error(f"{file}:{nn} text content not stored: {e}")
-                    #     file.error = "WST_TEXT_STORE_FAILED"
-                    #     file.save()
-                    #     raise e
                     except UnicodeDecodeError as e:
                         log.warn(f"{file}:{nn} failed to decode content")
                         file.error = "UNICODE_DECODE_ERROR"
@@ -191,7 +175,6 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 # now determine where to move to next:
                 next_child = cursor.goto_first_child()
                 if next_child == True:
-                    # cur_tree_parent = nn
                     parent_stack.append(nnid)
                     continue # cur_node to next_child
                 next_sibling = cursor.goto_next_sibling()
@@ -203,14 +186,15 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                     if goto_parent:
                         # reversing up the tree
                         if len(parent_stack) > 0:
-                            # cur_tree_parent = cur_tree_parent.parent.get()
                             parent_stack.pop()
                         else:
-                            log.err(f"Bad tree iteration detected!")
+                            log.err(f"Bad tree iteration detected! Went up more parents than recorded.")
                     else:
                         # we are done iterating
                         if node_q:
                             node_q.put(nc)
+                        if len(parent_stack) != 0:
+                            log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
                         return file
     except Exception as e:
         file.error = str(e)
