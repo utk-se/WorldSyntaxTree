@@ -184,11 +184,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 while cursor.goto_next_sibling() == False:
                     goto_parent = cursor.goto_parent()
                     if goto_parent:
-                        # reversing up the tree
-                        if len(parent_stack) > 0:
-                            parent_stack.pop()
-                        else:
-                            log.err(f"Bad tree iteration detected! Went up more parents than recorded.")
+                        parent_stack.pop()
                     else:
                         # we are done iterating
                         if node_q:
