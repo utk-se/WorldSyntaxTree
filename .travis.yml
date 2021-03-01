@@ -5,6 +5,10 @@ python:
 
 sudo: false
 
+cache:
+  directories:
+    - $HOME/.cache/wsyntree
+
 install:
   - python -m pip install -r requirements.txt
   - python setup.py install
@@ -12,3 +16,9 @@ install:
 script:
   - python tests/test.py -l javascript tests/stuff.js
   - python tests/test.py -l python tests/stuff.py
+  - python tests/test.py -l ruby tests/stuff.rb
+  - python tests/test.py -l c tests/stuff.c
+  - python tests/test.py -l cpp tests/stuff.cpp
+  - python tests/test.py -l java tests/stuff.java
+  - python tests/test.py -l rust tests/stuff.rs
+  - python tests/test.py -l go tests/stuff.go

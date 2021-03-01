@@ -33,7 +33,7 @@ if __name__ == '__main__':
     tree = lang.parse_file(args.file_path)
 
     cur = tree.walk()
-    cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: x.is_named)
+    cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: True)
 
     log.debug(cur)
 
