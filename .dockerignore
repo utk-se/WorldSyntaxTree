@@ -6,3 +6,5 @@ venv/
 dist/
 build/
 .git/
+*.pyc
+__pycache__/

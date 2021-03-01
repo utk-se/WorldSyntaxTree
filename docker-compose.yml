@@ -1,10 +1,6 @@
 
 version: '3'
 
-volumes:
-  wst_neo4j_data:
-    driver: local
-
 services:
   wst-test:
     build:
@@ -13,12 +9,12 @@ services:
     depends_on:
       - neo4j
     restart: "no"
-    command: "wait-for-it neo4j:7687 -- /usr/bin/time -v python -m wsyntree_collector -v https://github.com/TheAlgorithms/Python.git"
+    command: "wait-for-it neo4j:7687 -- /wst/docker/test-collector.sh"
     environment:
       - NEO4J_BOLT_URL=bolt://neo4j:pass@neo4j:7687
 
   neo4j:
-    image: neo4j:latest
+    image: neo4j:4.2
     ports:
       - 127.0.0.1:9784:7474
       - 127.0.0.1:9787:7687

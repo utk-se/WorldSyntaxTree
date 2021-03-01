@@ -19,8 +19,9 @@ setup(
     author_email='bklein3@vols.utk.edu',
     url='',
     # license='MIT',
-    # dependency_links = [
-    #     'http://github.com/utk-se/py-tree-sitter/tarball/master#egg=tree_sitter'
+    # dependency_links=[
+    #     # 'https://github.com/utk-se/py-tree-sitter/tarball/master#egg=tree_sitter',
+    #     "git+https://github.com/utk-se/py-tree-sitter.git@master#egg=tree_sitter_utk",
     # ],
     packages=find_packages(exclude=['ez_setup', 'examples', 'tests', 'vendor', 'venv']),
     include_package_data=True,
@@ -28,11 +29,12 @@ setup(
     install_requires=[
         "coloredlogs",
         "pygit2",
-        "tree_sitter",
+        # "tree_sitter",
+        "tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master",
         "neomodel",
-        "pyparsing",
         "tqdm",
-        "Pebble"
+        "Pebble",
+        "filelock"
     ],
     entry_points={
         'console_scripts': [
