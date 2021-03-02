@@ -130,7 +130,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     nc = 0
     parent_stack = []
     try:
-        with driver.session() as session, session.begin_transaction() as tx:
+        with driver.session() as session:
             # definitions: nn = new node, nt = new text, nc = node count
             while cursor.node is not None:
                 cur_node = cursor.node
@@ -146,7 +146,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                     parentid = parent_stack[-1]
 
                 # insert data into the database
-                with nullcontext():
+                with session.begin_transaction() as tx:
                     nnid = create_WSTNode(tx, nnd)
                     WSTNode_set_file(tx, nnid, file.id)
 
