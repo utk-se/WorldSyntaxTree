@@ -29,31 +29,39 @@ def _tqdm_node_receiver(q):
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
 def create_WSTNode(tx, data: dict) -> int:
-    result = tx.run(
-        """
+    if "parentid" in data:
+        q = """
+        match (f:WSTFile), (p:WSTNode)
+        where id(f) = $fileid and id(p) = $parentid
+        create (p)<-[:PARENT]-(nn:WSTNode {
+            x1: $x1, x2: $x2, y1: $y1, y2: $y2,
+            named: $named, type: $type
+        })-[:IN_FILE]->(f)
+        return id(nn) as node_id"""
+    else:
+        q = """
         match (f:WSTFile)
         where id(f) = $fileid
         create (nn:WSTNode {
             x1: $x1, x2: $x2, y1: $y1, y2: $y2,
             named: $named, type: $type
         })-[:IN_FILE]->(f)
-        return id(nn) as node_id""",
-        data
-    )
+        return id(nn) as node_id"""
+    result = tx.run(q, data)
     record = result.single()
     return record["node_id"]
 
-def WSTNode_set_parent(tx, childid, parentid):
-    result = tx.run(
-        """match (p), (c)
-        where id(c) = $childid and id(p) = $parentid
-        create (c)-[r:PARENT]->(p)
-        return id(r) as rel_id""",
-        childid=childid,
-        parentid=parentid,
-    )
-    record = result.single()
-    return record["rel_id"]
+# def WSTNode_set_parent(tx, childid, parentid):
+#     result = tx.run(
+#         """match (p), (c)
+#         where id(c) = $childid and id(p) = $parentid
+#         create (c)-[r:PARENT]->(p)
+#         return id(r) as rel_id""",
+#         childid=childid,
+#         parentid=parentid,
+#     )
+#     record = result.single()
+#     return record["rel_id"]
 
 # def WSTNode_set_file(tx, nodeid, fileid):
 #     result = tx.run(
@@ -69,30 +77,34 @@ def WSTNode_set_parent(tx, childid, parentid):
 #     record = result.single()
 #     return record["rel_id"]
 
-def WSTNode_set_text(tx, nodeid, textid):
-    result = tx.run(
-        """match (n:WSTNode), (t:WSTText)
-        where id(n) = $nodeid and id(t) = $textid
-        create (n)-[r:CONTENT]->(t)
-        return id(r) as rel_id""",
-        nodeid=nodeid,
-        textid=textid
-    )
-    record = result.single()
-    return record["rel_id"]
-
-def create_WSTText(tx, text):
+def WSTNode_add_text(tx, nodeid, text):
     n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
     result = tx.run(
-        "create (nt:WSTText:"+n_t+""" {
+        """match (n:WSTNode)
+        where id(n) = $nodeid
+        create (n)-[r:CONTENT]->(t:WSTTest:"""+n_t+""" {
             length: $length,
             text: $text
-        }) return id(nt) as node_id""",
+        })
+        return id(t) as text_id""",
+        nodeid=nodeid,
         length=len(text),
         text=text,
     )
     record = result.single()
-    return record["node_id"]
+    return record["text_id"]
+
+# def create_WSTText(tx, text):
+#     n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
+#     result = tx.run(
+#         "create (nt:WSTText:"+n_t+""" {
+#             length: $length,
+#             text: $text
+#         }) return id(nt) as node_id""",
+#
+#     )
+#     record = result.single()
+#     return record["node_id"]
 
 def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify_every: int=100):
     """Runs one file's analysis from a repo.
@@ -146,30 +158,25 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 (nnd.x1,nnd.y1) = cur_node.start_point
                 (nnd.x2,nnd.y2) = cur_node.end_point
 
-                parentid = None
                 if len(parent_stack) > 0:
-                    parentid = parent_stack[-1]
+                    nnd.parentid = parent_stack[-1]
 
                 # insert data into the database
                 with session.begin_transaction() as tx:
                     nnid = create_WSTNode(tx, nnd)
                     # WSTNode_set_file(tx, nnid, file.id)
 
-                    if parentid is not None:
-                        WSTNode_set_parent(tx, nnid, parentid)
                     # text storage
                     try:
                         decoded_content = cur_node.text.tobytes().decode()
-                        ntid = create_WSTText(tx, decoded_content)
-                        WSTNode_set_text(tx, nnid, ntid)
+                        ntid = WSTNode_add_text(tx, nnid, decoded_content)
                     except UnicodeDecodeError as e:
-                        log.warn(f"{file}:{nn} failed to decode content")
-                        file.error = "UNICODE_DECODE_ERROR"
+                        log.warn(f"{file}: failed to decode content")
+                        file.error = "UnicodeDecodeError"
                         file.save()
                         return file
-                # end transaction
 
-                # nn = inflate_WSTNode(nnid)
+                # end transaction
 
                 # progress reporting: desired to evaluate node insertion performance
                 nc += 1
