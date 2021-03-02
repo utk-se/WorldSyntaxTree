@@ -28,12 +28,16 @@ def _tqdm_node_receiver(q):
             tbar.update(nc)
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
-def create_WSTNode(tx, data: dict) -> int:
+def create_WSTNode(tx, data: dict, fileid) -> int:
     result = tx.run(
-        """create (nn:WSTNode {
+        """
+        match (f:WSTFile)
+        where id(f) = $fileid
+        create (nn:WSTNode {
             x1: $x1, x2: $x2, y1: $y1, y2: $y2,
             named: $named, type: $type
-        }) return id(nn) as node_id""",
+        })-[:IN_FILE]->(f)
+        return id(nn) as node_id""",
         data
     )
     record = result.single()
@@ -51,19 +55,19 @@ def WSTNode_set_parent(tx, childid, parentid):
     record = result.single()
     return record["rel_id"]
 
-def WSTNode_set_file(tx, nodeid, fileid):
-    result = tx.run(
-        """match (n:WSTNode), (f:WSTFile)
-        where id(n) = $nodeid and id(f) = $fileid
-        create (n)-[r:IN_FILE]->(f)
-        return id(r) as rel_id""",
-        {
-            "nodeid": nodeid,
-            "fileid": fileid,
-        }
-    )
-    record = result.single()
-    return record["rel_id"]
+# def WSTNode_set_file(tx, nodeid, fileid):
+#     result = tx.run(
+#         """match (n:WSTNode), (f:WSTFile)
+#         where id(n) = $nodeid and id(f) = $fileid
+#         create (n)-[r:IN_FILE]->(f)
+#         return id(r) as rel_id""",
+#         {
+#             "nodeid": nodeid,
+#             "fileid": fileid,
+#         }
+#     )
+#     record = result.single()
+#     return record["rel_id"]
 
 def WSTNode_set_text(tx, nodeid, textid):
     result = tx.run(
@@ -147,8 +151,8 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
 
                 # insert data into the database
                 with session.begin_transaction() as tx:
-                    nnid = create_WSTNode(tx, nnd)
-                    WSTNode_set_file(tx, nnid, file.id)
+                    nnid = create_WSTNode(tx, nnd, file.id)
+                    # WSTNode_set_file(tx, nnid, file.id)
 
                     if parentid is not None:
                         WSTNode_set_parent(tx, nnid, parentid)
