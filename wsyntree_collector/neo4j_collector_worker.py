@@ -28,7 +28,7 @@ def _tqdm_node_receiver(q):
             tbar.update(nc)
     log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
 
-def create_WSTNode(tx, data: dict, fileid) -> int:
+def create_WSTNode(tx, data: dict) -> int:
     result = tx.run(
         """
         match (f:WSTFile)
@@ -141,6 +141,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 nnd = dotdict({
                     "named": cur_node.is_named,
                     "type": cur_node.type,
+                    "fileid": file.id,
                 })
                 (nnd.x1,nnd.y1) = cur_node.start_point
                 (nnd.x2,nnd.y2) = cur_node.end_point
@@ -151,7 +152,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
 
                 # insert data into the database
                 with session.begin_transaction() as tx:
-                    nnid = create_WSTNode(tx, nnd, file.id)
+                    nnid = create_WSTNode(tx, nnd)
                     # WSTNode_set_file(tx, nnid, file.id)
 
                     if parentid is not None:
