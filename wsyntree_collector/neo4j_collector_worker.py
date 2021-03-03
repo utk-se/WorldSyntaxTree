@@ -20,13 +20,13 @@ from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
 @concurrent.process
 def _tqdm_node_receiver(q):
-    log.debug(f"started counting added nodes from {q}")
+    log.debug(f"started counting added nodes")
     n = 0
-    with tqdm(desc="adding nodes to db", position=1) as tbar:
+    with tqdm(desc="adding nodes to db", position=1, unit='nodes', unit_scale=True) as tbar:
         while (nc := q.get()) is not None:
             n += nc
             tbar.update(nc)
-    log.debug(f"stopped counting nodes: total WSTNodes added: {n}")
+    log.info(f"stopped counting nodes, total WSTNodes added: {n}")
 
 def create_WSTNode(tx, data: dict) -> int:
     if "parentid" in data:
@@ -185,7 +185,7 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 if node_q and nc >= notify_every:
                     node_q.put(nc)
                     nc = 0
-                    if not t_notified and time.time() > t_start + (5*60):
+                    if not t_notified and time.time() > t_start + (30*60):
                         log.warn(f"{file}: processing taking longer than expected.")
                         t_notified = True
 

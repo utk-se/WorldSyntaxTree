@@ -16,7 +16,6 @@ from wsyntree.tree_models import (
 )
 from wsyntree_collector import neo4j_collector_worker as wst_n4j_worker
 
-log.setLevel(log.DEBUG)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -32,8 +31,14 @@ if __name__ == '__main__':
         type=str,
         help="File to parse"
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+    )
 
     args = parser.parse_args()
+    if args.verbose:
+        log.setLevel(log.DEBUG)
 
     if "NEO4J_BOLT_URL" in os.environ:
         neoconfig.DATABASE_URL = os.environ["NEO4J_BOLT_URL"]
