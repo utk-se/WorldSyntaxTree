@@ -141,6 +141,8 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     )
 
     # log.debug(f"growing nodes for {file}")
+    t_start = time.time()
+    t_notified = False
     cursor = tree.walk()
     # iteration loop
     nc = 0
@@ -183,6 +185,9 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                 if node_q and nc >= notify_every:
                     node_q.put(nc)
                     nc = 0
+                    if not t_notified and time.time() > t_start + (5*60):
+                        log.warn(f"{file}: processing taking longer than expected.")
+                        t_notified = True
 
                 # now determine where to move to next:
                 next_child = cursor.goto_first_child()
