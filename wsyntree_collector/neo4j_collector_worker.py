@@ -50,8 +50,8 @@ def create_WSTNode_root(tx, data: dict) -> int:
     record = result.single()
     return record["node_id"]
 
-def batch_insert_WSTNode(tx, entries: list) -> int:
-    q = """
+def batch_insert_WSTNode(tx, entries: list, order_to_id: dict) -> int:
+    qi = """
     unwind $entries as data
     match (f:WSTFile)
     where id(f) = data.fileid
@@ -62,22 +62,37 @@ def batch_insert_WSTNode(tx, entries: list) -> int:
         length: data.textlength,
         text: data.text
     })
-    with f, c, data
-    match (c)-[:IN_FILE]->(f)<-[:IN_FILE]-(p:WSTNode)
-    where p.preorder = data.parentorder
+    return c.preorder as preorder, id(c) as cid, data.parentorder as parentorder order by c.preorder
+    """
+    nresults = tx.run(qi, {"entries": entries})
+
+    nvals = nresults.data()
+    assert len(nvals) == len(entries), f"Ensure all nodes were created."
+
+    # use a dict for constant-time order to nodeid:
+    # create a list of all the parent connections we need to make:
+    rp_list = []
+    for v in nvals:
+        order_to_id[v['preorder']] = v['cid']
+        rp_list.append({
+            "cid": v['cid'],
+            "pid": order_to_id[v['parentorder']],
+        })
+
+    qr = """
+    unwind $connectlist as ctpi
+    match (c:WSTNode), (p:WSTNode)
+    where id(c) = ctpi.cid and id(p) = ctpi.pid
     create (c)-[r:PARENT]->(p)
     return id(c) as cid, id(p) as pid, id(r) as rid order by c.preorder
     """
-    nresults = tx.run(q, {"entries": entries})
+    rresults = tx.run(qr, {"connectlist": rp_list})
 
-    nvals = nresults.data()
+    rvals = rresults.data()
     # assert len(nvals) == len(rvals), f"Ensure every child gets a parent node relation."
-    # assert len(vals) == len(batch_writes), f"batch_writes size {len(batch_writes)} wrote wrong amount: {vals}"
-    for v in nvals:
-        assert v['cid']
-        assert v['pid']
+    assert len(rvals) == len(entries), f"batch write size {len(entries)} made {len(rvals)} parent connections"
+    for v in rvals:
         assert v['rid']
-    assert len(nvals) == len(entries), f"Ensure all nodes were created."
 
     return nvals
 
@@ -127,6 +142,7 @@ def _process_file(
     cursor = tree.walk()
     # iteration loop
     preorder = 0
+    order_to_id = {}
     parent_stack = []
     root_written = False
     batch_writes = []
@@ -161,7 +177,7 @@ def _process_file(
                     if len(batch_writes) >= batch_write_size:
                         # log.debug(f"batch insert {len(batch_writes)}...")
                         with session.begin_transaction() as tx:
-                            batch_insert_WSTNode(tx, batch_writes)
+                            batch_insert_WSTNode(tx, batch_writes, order_to_id)
                         # progress reporting: desired to evaluate node insertion performance
                         if node_q:
                             node_q.put(len(batch_writes))
@@ -174,6 +190,7 @@ def _process_file(
                     # root node is a different query
                     with session.begin_transaction() as tx:
                         nnid = create_WSTNode_root(tx, nnd)
+                        order_to_id[0] = nnid
                     root_written = True
                 preorder += 1
 
@@ -196,7 +213,7 @@ def _process_file(
                             log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
                         if batch_writes:
                             with session.begin_transaction() as tx:
-                                batch_insert_WSTNode(tx, batch_writes)
+                                batch_insert_WSTNode(tx, batch_writes, order_to_id)
                             if node_q:
                                 node_q.put(len(batch_writes))
                         return file # end process
