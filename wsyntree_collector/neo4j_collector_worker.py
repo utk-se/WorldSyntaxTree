@@ -73,29 +73,28 @@ def batch_insert_WSTNode(tx, entries: list) -> int:
     unwind $entries as data
     match (f:WSTFile)
     where id(f) = data.fileid
-    create (f)<-[:IN_FILE]-(nn:WSTNode {
+    create (f)<-[:IN_FILE]-(c:WSTNode {
         x1: data.x1, x2: data.x2, y1: data.y1, y2: data.y2,
         named: data.named, type: data.type, preorder: data.preorder
     })-[:CONTENT]->(t:WSTText {
         length: data.textlength,
         text: data.text
     })
-    return id(nn) as nnid order by nn.preorder
+    with f, c, data
+    match (c)-[:IN_FILE]->(f)<-[:IN_FILE]-(p:WSTNode)
+    where p.preorder = data.parentorder
+    create (c)-[r:PARENT]->(p)
+    return id(c) as cid, id(p) as pid, id(r) as rid order by c.preorder
     """
     nresults = tx.run(q, {"entries": entries})
-    q = """
-    unwind $entries as data
-    match (f:WSTFile)<-[:IN_FILE]-(p:WSTNode), (f:WSTFile)<-[:IN_FILE]-(c:WSTNode)
-    where id(f) = data.fileid and p.preorder = data.parentorder and c.preorder = data.preorder
-    create (c)-[r:PARENT]->(p)
-    return id(r) as rid order by c.preorder
-    """
-    rresults = tx.run(q, {"entries": entries})
 
-    nvals = nresults.values()
-    rvals = rresults.values()
-    assert len(nvals) == len(rvals), f"Ensure every child gets a parent node relation."
+    nvals = nresults.data()
+    # assert len(nvals) == len(rvals), f"Ensure every child gets a parent node relation."
     # assert len(vals) == len(batch_writes), f"batch_writes size {len(batch_writes)} wrote wrong amount: {vals}"
+    for v in nvals:
+        assert v['cid']
+        assert v['pid']
+        assert v['rid']
     assert len(nvals) == len(entries), f"Ensure all nodes were created."
 
     return nvals
@@ -121,7 +120,7 @@ def _process_file(
         tree_repo: WSTRepository,
         *,
         node_q = None,
-        batch_write_size=1000,
+        batch_write_size=10000,
     ):
     """Runs one file's analysis from a repo.
 
