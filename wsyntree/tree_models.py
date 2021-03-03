@@ -53,10 +53,16 @@ class WSTHugeText(WSTText):
     text = StringProperty(index=False, required=True)
 
 class WSTNode(StructuredNode):
+    # x: line, y: character (2d coords begin->end)
     x1 = IntegerProperty(required=True)
     y1 = IntegerProperty(required=True)
     x2 = IntegerProperty(required=True)
     y2 = IntegerProperty(required=True)
+
+    # preorder: depth-first traversal order, unique within file
+    # aka: topologically sorted
+    # root node is zero and has no parent
+    preorder = IntegerProperty(index=True, required=True)
 
     named = BooleanProperty(required=True)
     type = StringProperty(index=True)

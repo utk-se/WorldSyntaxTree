@@ -28,85 +28,86 @@ def _tqdm_node_receiver(q):
             tbar.update(nc)
     log.info(f"stopped counting nodes, total WSTNodes added: {n}")
 
-def create_WSTNode(tx, data: dict) -> int:
-    if "parentid" in data:
-        q = """
-        match (f:WSTFile), (p:WSTNode)
-        where id(f) = $fileid and id(p) = $parentid
-        create (p)<-[:PARENT]-(nn:WSTNode {
-            x1: $x1, x2: $x2, y1: $y1, y2: $y2,
-            named: $named, type: $type
-        })-[:IN_FILE]->(f)
-        return id(nn) as node_id"""
-    else:
-        q = """
-        match (f:WSTFile)
-        where id(f) = $fileid
-        create (nn:WSTNode {
-            x1: $x1, x2: $x2, y1: $y1, y2: $y2,
-            named: $named, type: $type
-        })-[:IN_FILE]->(f)
-        return id(nn) as node_id"""
+def create_WSTNode_root(tx, data: dict) -> int:
+    """Exactly the same as create_WSTNode, but with no parent node
+
+    Should only ever happen once per file. (the root / first node)
+    """
+    text = data['text']
+    n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
+    q = """
+    match (f:WSTFile)
+    where id(f) = $fileid
+    create (nn:WSTNode {
+        x1: $x1, x2: $x2, y1: $y1, y2: $y2,
+        named: $named, type: $type, preorder: $preorder
+    })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText:"""+n_t+""" {
+        length: $textlength,
+        text: $text
+    })
+    return id(nn) as node_id"""
     result = tx.run(q, data)
     record = result.single()
     return record["node_id"]
 
-# def WSTNode_set_parent(tx, childid, parentid):
-#     result = tx.run(
-#         """match (p), (c)
-#         where id(c) = $childid and id(p) = $parentid
-#         create (c)-[r:PARENT]->(p)
-#         return id(r) as rel_id""",
-#         childid=childid,
-#         parentid=parentid,
-#     )
-#     record = result.single()
-#     return record["rel_id"]
-
-# def WSTNode_set_file(tx, nodeid, fileid):
-#     result = tx.run(
-#         """match (n:WSTNode), (f:WSTFile)
-#         where id(n) = $nodeid and id(f) = $fileid
-#         create (n)-[r:IN_FILE]->(f)
-#         return id(r) as rel_id""",
-#         {
-#             "nodeid": nodeid,
-#             "fileid": fileid,
-#         }
-#     )
-#     record = result.single()
-#     return record["rel_id"]
-
-def WSTNode_add_text(tx, nodeid, text):
-    n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
-    result = tx.run(
-        """match (n:WSTNode)
-        where id(n) = $nodeid
-        create (n)-[r:CONTENT]->(t:WSTTest:"""+n_t+""" {
-            length: $length,
-            text: $text
-        })
-        return id(t) as text_id""",
-        nodeid=nodeid,
-        length=len(text),
-        text=text,
-    )
-    record = result.single()
-    return record["text_id"]
-
-# def create_WSTText(tx, text):
-#     n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
-#     result = tx.run(
-#         "create (nt:WSTText:"+n_t+""" {
-#             length: $length,
-#             text: $text
-#         }) return id(nt) as node_id""",
-#
-#     )
+# def create_WSTNode(tx, data: dict) -> int:
+#     # text = data['text']
+#     # n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
+#     q = """
+#     match (f:WSTFile), (p:WSTNode)
+#     where id(f) = $fileid and id(p) = $parentid
+#     create (p)<-[:PARENT]-(nn:WSTNode {
+#         x1: $x1, x2: $x2, y1: $y1, y2: $y2,
+#         named: $named, type: $type
+#     })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText {
+#         length: $textlength,
+#         text: $text
+#     })
+#     return id(nn) as node_id"""
+#     result = tx.run(q, data)
 #     record = result.single()
 #     return record["node_id"]
 
-def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify_every: int=100):
+def batch_insert_WSTNode(tx, entries: list) -> int:
+    q = """
+    unwind $entries as data
+    match (f:WSTFile)<-[:IN_FILE]-(p:WSTNode)
+    where id(f) = data.fileid and p.preorder = data.parentorder
+    create (p)<-[:PARENT]-(nn:WSTNode {
+        x1: data.x1, x2: data.x2, y1: data.y1, y2: data.y2,
+        named: data.named, type: data.type, preorder: data.preorder
+    })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText {
+        length: data.textlength,
+        text: data.text
+    })
+    return id(nn) as nnid order by nn.preorder
+    """
+    result = tx.run(q, {"entries": entries})
+    return result
+
+# def WSTNode_add_text(tx, nodeid, text):
+#     result = tx.run(
+#         """match (n:WSTNode)
+#         where id(n) = $nodeid
+#         create (n)-[r:CONTENT]->(t:WSTTest:"""+n_t+""" {
+#             length: $length,
+#             text: $text
+#         })
+#         return id(t) as text_id""",
+#         nodeid=nodeid,
+#         length=len(text),
+#         text=text,
+#     )
+#     record = result.single()
+#     return record["text_id"]
+
+def _process_file(
+        path: Path,
+        tree_repo: WSTRepository,
+        *,
+        node_q = None,
+        batch_write_size=1000,
+    ):
     """Runs one file's analysis from a repo.
 
     node_q: push integers for counting number of added syntax nodes
@@ -145,8 +146,10 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
     t_notified = False
     cursor = tree.walk()
     # iteration loop
-    nc = 0
+    preorder = 0
     parent_stack = []
+    root_written = False
+    batch_writes = []
     try:
         with driver.session() as session:
             # definitions: nn = new node, nt = new text, nc = node count
@@ -156,43 +159,52 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                     "named": cur_node.is_named,
                     "type": cur_node.type,
                     "fileid": file.id,
+                    "preorder": preorder
                 })
                 (nnd.x1,nnd.y1) = cur_node.start_point
                 (nnd.x2,nnd.y2) = cur_node.end_point
 
-                if len(parent_stack) > 0:
-                    nnd.parentid = parent_stack[-1]
+                # bail if we can't decode text
+                try:
+                    nnd.text = cur_node.text.tobytes().decode()
+                    nnd.textlength = len(nnd.text)
+                except UnicodeDecodeError as e:
+                    log.warn(f"{file}: failed to decode content")
+                    file.error = "UnicodeDecodeError"
+                    file.save()
+                    return file # ends process
 
-                # insert data into the database
-                with session.begin_transaction() as tx:
-                    nnid = create_WSTNode(tx, nnd)
-                    # WSTNode_set_file(tx, nnid, file.id)
-
-                    # text storage
-                    try:
-                        decoded_content = cur_node.text.tobytes().decode()
-                        ntid = WSTNode_add_text(tx, nnid, decoded_content)
-                    except UnicodeDecodeError as e:
-                        log.warn(f"{file}: failed to decode content")
-                        file.error = "UnicodeDecodeError"
-                        file.save()
-                        return file
-
-                # end transaction
-
-                # progress reporting: desired to evaluate node insertion performance
-                nc += 1
-                if node_q and nc >= notify_every:
-                    node_q.put(nc)
-                    nc = 0
-                    if not t_notified and time.time() > t_start + (30*60):
-                        log.warn(f"{file}: processing taking longer than expected.")
-                        t_notified = True
+                if root_written:
+                    nnd.parentorder = parent_stack[-1]
+                    batch_writes.append(nnd)
+                    # batch write check:
+                    if len(batch_writes) >= batch_write_size:
+                        # log.debug(f"batch insert {len(batch_writes)}...")
+                        with session.begin_transaction() as tx:
+                            r = batch_insert_WSTNode(tx, batch_writes)
+                            # r = r.consume()
+                            vals = r.values()
+                            # two nodes from each: WSTNode, WSTText
+                            assert len(vals) == len(batch_writes), f"batch_writes size {len(batch_writes)} wrote wrong amount: {vals}"
+                        # progress reporting: desired to evaluate node insertion performance
+                        if node_q:
+                            node_q.put(len(batch_writes))
+                            if not t_notified and time.time() > t_start + (30*60):
+                                log.warn(f"{file}: processing taking longer than expected.")
+                                t_notified = True
+                        batch_writes = []
+                else:
+                    # log.debug("writing root node...")
+                    # root node is a different query
+                    with session.begin_transaction() as tx:
+                        nnid = create_WSTNode_root(tx, nnd)
+                    root_written = True
+                preorder += 1
 
                 # now determine where to move to next:
                 next_child = cursor.goto_first_child()
                 if next_child == True:
-                    parent_stack.append(nnid)
+                    parent_stack.append(nnd.preorder)
                     continue # cur_node to next_child
                 next_sibling = cursor.goto_next_sibling()
                 if next_sibling == True:
@@ -204,11 +216,14 @@ def _process_file(path: Path, tree_repo: WSTRepository, *, node_q = None, notify
                         parent_stack.pop()
                     else:
                         # we are done iterating
-                        if node_q:
-                            node_q.put(nc)
                         if len(parent_stack) != 0:
                             log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
-                        return file
+                        if batch_writes:
+                            with session.begin_transaction() as tx:
+                                batch_insert_WSTNode(tx, batch_writes)
+                            if node_q:
+                                node_q.put(len(batch_writes))
+                        return file # end process
     except Exception as e:
         file.error = str(e)
         file.save()

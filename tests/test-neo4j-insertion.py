@@ -69,10 +69,11 @@ if __name__ == '__main__':
         node_receiver = wst_n4j_worker._tqdm_node_receiver(_node_queue)
 
         try:
-            cProfile.run(
-                f'wst_n4j_worker._process_file(args.file_path, repo, node_q=_node_queue, notify_every=10)',
+            r = cProfile.run(
+                f'wst_n4j_worker._process_file(args.file_path, repo, node_q=_node_queue, batch_write_size=100)',
                 "test-insertion.prof",
             )
+            log.info(f"{r}")
         # except KeyboardInterrupt as e:
         #     log.warn(f"stopping collection ...")
         finally:
