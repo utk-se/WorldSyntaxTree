@@ -50,24 +50,6 @@ def create_WSTNode_root(tx, data: dict) -> int:
     record = result.single()
     return record["node_id"]
 
-# def create_WSTNode(tx, data: dict) -> int:
-#     # text = data['text']
-#     # n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
-#     q = """
-#     match (f:WSTFile), (p:WSTNode)
-#     where id(f) = $fileid and id(p) = $parentid
-#     create (p)<-[:PARENT]-(nn:WSTNode {
-#         x1: $x1, x2: $x2, y1: $y1, y2: $y2,
-#         named: $named, type: $type
-#     })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText {
-#         length: $textlength,
-#         text: $text
-#     })
-#     return id(nn) as node_id"""
-#     result = tx.run(q, data)
-#     record = result.single()
-#     return record["node_id"]
-
 def batch_insert_WSTNode(tx, entries: list) -> int:
     q = """
     unwind $entries as data
@@ -98,22 +80,6 @@ def batch_insert_WSTNode(tx, entries: list) -> int:
     assert len(nvals) == len(entries), f"Ensure all nodes were created."
 
     return nvals
-
-# def WSTNode_add_text(tx, nodeid, text):
-#     result = tx.run(
-#         """match (n:WSTNode)
-#         where id(n) = $nodeid
-#         create (n)-[r:CONTENT]->(t:WSTTest:"""+n_t+""" {
-#             length: $length,
-#             text: $text
-#         })
-#         return id(t) as text_id""",
-#         nodeid=nodeid,
-#         length=len(text),
-#         text=text,
-#     )
-#     record = result.single()
-#     return record["text_id"]
 
 def _process_file(
         path: Path,
