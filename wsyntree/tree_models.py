@@ -41,7 +41,7 @@ class WSTFile(StructuredNode):
     wstnodes = RelationshipFrom("WSTNode", 'IN_FILE')
 
 class WSTText(StructuredNode):
-    length = IntegerProperty(required=True)
+    length = IntegerProperty(index=True, required=True)
 
     used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
