@@ -71,19 +71,34 @@ def create_WSTNode_root(tx, data: dict) -> int:
 def batch_insert_WSTNode(tx, entries: list) -> int:
     q = """
     unwind $entries as data
-    match (f:WSTFile)<-[:IN_FILE]-(p:WSTNode)
-    where id(f) = data.fileid and p.preorder = data.parentorder
-    create (p)<-[:PARENT]-(nn:WSTNode {
+    match (f:WSTFile)
+    where id(f) = data.fileid
+    create (f)<-[:IN_FILE]-(nn:WSTNode {
         x1: data.x1, x2: data.x2, y1: data.y1, y2: data.y2,
         named: data.named, type: data.type, preorder: data.preorder
-    })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText {
+    })-[:CONTENT]->(t:WSTText {
         length: data.textlength,
         text: data.text
     })
     return id(nn) as nnid order by nn.preorder
     """
-    result = tx.run(q, {"entries": entries})
-    return result
+    nresults = tx.run(q, {"entries": entries})
+    q = """
+    unwind $entries as data
+    match (f:WSTFile)<-[:IN_FILE]-(p:WSTNode), (f:WSTFile)<-[:IN_FILE]-(c:WSTNode)
+    where id(f) = data.fileid and p.preorder = data.parentorder and c.preorder = data.preorder
+    create (c)-[r:PARENT]->(p)
+    return id(r) as rid order by c.preorder
+    """
+    rresults = tx.run(q, {"entries": entries})
+
+    nvals = nresults.values()
+    rvals = rresults.values()
+    assert len(nvals) == len(rvals), f"Ensure every child gets a parent node relation."
+    # assert len(vals) == len(batch_writes), f"batch_writes size {len(batch_writes)} wrote wrong amount: {vals}"
+    assert len(nvals) == len(entries), f"Ensure all nodes were created."
+
+    return nvals
 
 # def WSTNode_add_text(tx, nodeid, text):
 #     result = tx.run(
@@ -181,11 +196,7 @@ def _process_file(
                     if len(batch_writes) >= batch_write_size:
                         # log.debug(f"batch insert {len(batch_writes)}...")
                         with session.begin_transaction() as tx:
-                            r = batch_insert_WSTNode(tx, batch_writes)
-                            # r = r.consume()
-                            vals = r.values()
-                            # two nodes from each: WSTNode, WSTText
-                            assert len(vals) == len(batch_writes), f"batch_writes size {len(batch_writes)} wrote wrong amount: {vals}"
+                            batch_insert_WSTNode(tx, batch_writes)
                         # progress reporting: desired to evaluate node insertion performance
                         if node_q:
                             node_q.put(len(batch_writes))
