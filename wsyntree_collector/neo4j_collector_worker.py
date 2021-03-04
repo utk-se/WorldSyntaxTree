@@ -50,7 +50,9 @@ def create_WSTNode_root(tx, data: dict) -> int:
     record = result.single()
     return record["node_id"]
 
-def batch_insert_WSTNode(tx, entries: list, order_to_id: dict) -> int:
+@neo4j.unit_of_work(timeout=10000)
+def managed_batch_insert(tx, entries: list, order_to_id_o: dict) -> dict:
+    order_to_id = order_to_id_o.copy() # stay pure until tx successful
     qi = """
     unwind $entries as data
     match (f:WSTFile)
@@ -94,7 +96,11 @@ def batch_insert_WSTNode(tx, entries: list, order_to_id: dict) -> int:
     for v in rvals:
         assert v['rid']
 
-    return nvals
+    return order_to_id
+
+def batch_insert_WSTNode(session, entries: list, order_to_id: dict) -> int:
+    n_addt = session.write_transaction(managed_batch_insert, entries, order_to_id)
+    order_to_id.update(n_addt)
 
 def _process_file(
         path: Path,
@@ -176,8 +182,7 @@ def _process_file(
                     # batch write check:
                     if len(batch_writes) >= batch_write_size:
                         # log.debug(f"batch insert {len(batch_writes)}...")
-                        with session.begin_transaction() as tx:
-                            batch_insert_WSTNode(tx, batch_writes, order_to_id)
+                        batch_insert_WSTNode(session, batch_writes, order_to_id)
                         # progress reporting: desired to evaluate node insertion performance
                         if node_q:
                             node_q.put(len(batch_writes))
@@ -212,8 +217,7 @@ def _process_file(
                         if len(parent_stack) != 0:
                             log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
                         if batch_writes:
-                            with session.begin_transaction() as tx:
-                                batch_insert_WSTNode(tx, batch_writes, order_to_id)
+                            batch_insert_WSTNode(session, batch_writes, order_to_id)
                             if node_q:
                                 node_q.put(len(batch_writes))
                         return file # end process
