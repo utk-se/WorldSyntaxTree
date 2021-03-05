@@ -108,7 +108,7 @@ def _process_file(
         tree_repo: WSTRepository,
         *,
         node_q = None,
-        batch_write_size=1000,
+        batch_write_size=100,
     ):
     """Runs one file's analysis from a repo.
 
