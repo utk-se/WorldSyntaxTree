@@ -50,7 +50,8 @@ def create_WSTNode_root(tx, data: dict) -> int:
     record = result.single()
     return record["node_id"]
 
-@neo4j.unit_of_work(timeout=10000)
+# milliseconds timeout
+@neo4j.unit_of_work(timeout=30 * 60 * 1000)
 def managed_batch_insert(tx, entries: list, order_to_id_o: dict) -> dict:
     order_to_id = order_to_id_o.copy() # stay pure until tx successful
     qi = """
