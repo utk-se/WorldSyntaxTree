@@ -31,7 +31,7 @@ setup(
         "pygit2",
         # "tree_sitter",
         "tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master",
-        "neomodel",
+        "python-arango",
         "tqdm",
         "Pebble",
         "filelock"

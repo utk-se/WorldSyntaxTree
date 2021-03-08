@@ -109,12 +109,16 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
     It yields one node of the tree at a time.
     """
     def __init__(
-            self, cursor: TreeCursor,
+            self,
+            cursor: TreeCursor,
             nodefilter: Callable[[Node], bool] = lambda x: True
         ):
         self._cursor = cursor
         self.nodefilter = nodefilter
         self._depth = 0
+        self._preorder = 0
+
+        assert self._cursor.goto_parent() == False, f"TreeSitterCursorIterator requires the root node to start with"
 
     def __iter__(self):
         return self
@@ -138,13 +142,19 @@ class TreeSitterCursorIterator(): # cannot subclass TreeCursor because it's C
 
     def __next__(self) -> Node:
         test_node = self._next_node_in_tree()
+        self._preorder += 1
         while not self.nodefilter(test_node):
             test_node = self._next_node_in_tree()
+            self._preorder += 1
         return test_node
 
     @property
     def depth(self) -> int:
         return self._depth
+
+    @property
+    def preorder(self) -> int:
+        return self._preorder
 
     def peek(self) -> Node:
         """Peek at the current node"""
