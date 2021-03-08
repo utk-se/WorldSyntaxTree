@@ -7,7 +7,7 @@ from wsyntree.utils import node_as_sexp
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
 def str_tsnode(n):
-    return f"tsnode<{n.type}, {n.start_point}>"
+    return f"tsnode<'{n.type}', {n.start_point}>"
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -37,12 +37,13 @@ if __name__ == '__main__':
     tree = lang.parse_file(args.file_path)
 
     cur = tree.walk()
-    cur = TreeSitterCursorIterator(cur, nodefilter=lambda x: True)
+    cur = TreeSitterCursorIterator(cur)
 
     log.debug(cur)
 
     root = cur.peek()
+    log.info(f"{cur.preorder:5d}:{' ' * cur.depth}{str_tsnode(root)}")
 
     for node in cur:
-        print(node)
-        log.info(f"{'  ' * cur.depth}{str_tsnode(node)}")
+        # print(node)
+        log.info(f"{cur.preorder:5d}:{' ' * cur.depth}{str_tsnode(node)}")

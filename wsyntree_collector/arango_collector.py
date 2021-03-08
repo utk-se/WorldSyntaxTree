@@ -9,6 +9,7 @@ import concurrent.futures as futures
 import os
 import time
 
+from arango import ArangoClient
 import pygit2 as git
 from tqdm import tqdm
 from pebble import ProcessPool, ThreadPool
@@ -18,7 +19,7 @@ from wsyntree.tree_models import (
     WSTRepository, WSTFile, WSTNode, WSTText
 )
 from wsyntree.localstorage import LocalCache
-from wsyntree.utils import list_all_git_files, pushd
+from wsyntree.utils import list_all_git_files, pushd, strip_url
 
 
 class WST_ArangoTreeCollector():
@@ -71,10 +72,10 @@ class WST_ArangoTreeCollector():
             'wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext'
         ]
         for cn in clls:
-            self._coll[cn] = db.collection(cn)
+            self._coll[cn] = self._db.collection(cn)
         graphs = ["wst-repo-files", "wst-file-nodes", "wst-node-parents", "wst-node-text"]
         for cn in graphs:
-            self._graph[cn] = db.graph(cn)
+            self._graph[cn] = self._db.graph(cn)
 
     def _get_git_repo(self):
         repodir = self._local_repo_path
@@ -131,7 +132,7 @@ class WST_ArangoTreeCollector():
         self._tree_repo = nr
         # log.debug(f"{nr} is hosted on {self._tree_scm_host}")
         # nr.host.connect(self._tree_scm_host)
-        self._colls['wstrepos'].insert(nr)
+        self._coll['wstrepos'].insert(nr.__dict__)
 
         # file-level processing
         file_paths = []

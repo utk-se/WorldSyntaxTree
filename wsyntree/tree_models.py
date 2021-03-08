@@ -1,4 +1,6 @@
 
+from itertools import chain
+
 __all__ = [
     'WSTRepository', 'WSTFile', 'WSTNode', 'WSTText'
 ]
@@ -13,7 +15,8 @@ class WST_Document():
 
     @property
     def __dict__(self):
-        return {s: getattr(self, s, None) for s in self.__slots__}
+        slots = chain.from_iterable([getattr(cls, '__slots__', []) for cls in type(self).__mro__])
+        return {s: getattr(self, s, None) for s in slots}
 
 class WSTRepository(WST_Document):
     __slots__ = [
