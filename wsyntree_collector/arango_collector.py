@@ -82,7 +82,7 @@ class WST_ArangoTreeCollector():
         repodir = self._local_repo_path
         if not (repodir / '.git').exists():
             repodir.mkdir(mode=0o770, parents=True, exist_ok=True)
-            log.debug(f"{self} cloning repo...")
+            log.debug(f"cloning repo to {repodir} ...")
             return git.clone_repository(
                 self.repo_url,
                 repodir.resolve()
@@ -103,7 +103,7 @@ class WST_ArangoTreeCollector():
     def _local_repo_path(self):
         cachedir = LocalCache.get_local_cache_dir() / 'collector_repos'
         if not cachedir.exists():
-            cachedir.mkdir(mode=0o770)
+            cachedir.mkdir(mode=0o770, exist_ok=True)
             log.debug(f"created dir {cachedir}")
         return cachedir.joinpath(self._url_path)
 
