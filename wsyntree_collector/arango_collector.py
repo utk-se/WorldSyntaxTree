@@ -180,7 +180,7 @@ class WST_ArangoTreeCollector():
                     ret_futures.append(executor.schedule(
                         process_file,
                         (nf, self._tree_repo, self.database_conn_str),
-                        # {'node_q': self._node_queue}
+                        {'node_q': self._node_queue}
                     ))
                 log.info(f"processing files with {self._worker_count} workers ...")
                 try:
