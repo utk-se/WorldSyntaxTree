@@ -243,5 +243,5 @@ def _process_file(
         file.update_in_db(db)
         log.err(f"hmm: {e}")
         raise e
-    finally:
-        log.info(f"file {file.path} done")
+    # finally:
+    #     log.info(f"file {file.path} done")

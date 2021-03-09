@@ -187,7 +187,7 @@ class WST_ArangoTreeCollector():
                     for r in tqdm(futures.as_completed(ret_futures), total=len(ret_futures), desc="processing files"):
                         nf = r.result()
                         # s = str(nf)
-                        log.debug(f"result {nf}")
+                        # log.debug(f"result {nf}")
                 except KeyboardInterrupt as e:
                     log.warn(f"stopping collection ...")
                     for rf in ret_futures:
