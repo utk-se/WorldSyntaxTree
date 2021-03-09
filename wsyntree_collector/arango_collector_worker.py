@@ -102,6 +102,13 @@ def _tqdm_node_receiver(q):
 def batch_insert_WSTNode(db, nodes: list):
     pass
 
+def process_file(*args, **kwargs):
+    try:
+        return _process_file(*args, **kwargs)
+    except Exception as e:
+        log.err(f"process_file error: {e}")
+        raise e
+
 def _process_file(
         file: WSTFile,
         tree_repo: WSTRepository,

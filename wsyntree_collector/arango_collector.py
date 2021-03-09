@@ -18,7 +18,7 @@ from wsyntree import log
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex
-from .arango_collector_worker import _tqdm_node_receiver, _process_file
+from .arango_collector_worker import _tqdm_node_receiver, process_file
 
 
 class WST_ArangoTreeCollector():
@@ -153,7 +153,7 @@ class WST_ArangoTreeCollector():
                 log.info(f"{len(files)} to process")
                 for file in files:
                     try:
-                        r = _process_file(file, self._tree_repo, self.database_conn_str)
+                        r = process_file(file, self._tree_repo, self.database_conn_str)
                         log.debug(f"{file.path} processing done: {r}")
                     except Exception as e:
                         log.err(f"during {file.path}, document {file._key}")
@@ -172,13 +172,13 @@ class WST_ArangoTreeCollector():
                     if not os.path.isfile(gobj.path):
                         continue
                     nf = WSTFile(
-                        _key=f"{nr.commit}-{gobj.hex}",
+                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
                         path=gobj.path,
                         oid=gobj.hex,
                     )
                     # file_paths.append(p)
                     ret_futures.append(executor.schedule(
-                        _process_file,
+                        process_file,
                         (nf, self._tree_repo, self.database_conn_str),
                         # {'node_q': self._node_queue}
                     ))
