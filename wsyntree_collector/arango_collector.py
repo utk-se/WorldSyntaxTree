@@ -109,7 +109,11 @@ class WST_ArangoTreeCollector():
 
     @functools.cached_property
     def _current_commit_hash(self) -> str:
-        return self._get_git_repo().revparse_single('HEAD').hex
+        try:
+            return self._get_git_repo().revparse_single('HEAD').hex
+        except KeyError as e:
+            log.error(f"repo in {self._local_repo_path} might not have HEAD?")
+            raise e
 
     ### NOTE public control functions
 
