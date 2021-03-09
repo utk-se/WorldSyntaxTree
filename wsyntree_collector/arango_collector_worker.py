@@ -18,7 +18,7 @@ from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 def _tqdm_node_receiver(q):
     log.debug(f"start counting db inserts...")
     n = 0
-    with tqdm(desc="writing documents to db", position=1, unit='nodes', unit_scale=True) as tbar:
+    with tqdm(desc="writing documents to db", position=1, unit='docs', unit_scale=True) as tbar:
         while (nc := q.get()) is not None:
             n += nc
             tbar.update(nc)
