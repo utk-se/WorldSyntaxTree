@@ -128,11 +128,7 @@ def _process_file(
         username=_db_username,
         password=_db_password,
     )
-    graph = db.graph('wst')
-    edge_fromrepo = graph.edge_collection('wst-fromrepo')
-    edge_fromfile = graph.edge_collection('wst-fromfile')
-    edge_nodeparent = graph.edge_collection('wst-nodeparent')
-    edge_nodetext = graph.edge_collection('wst-nodetext')
+    edge_fromrepo = db.graph('wst').edge_collection('wst-fromrepo')
 
     lang = get_TSABL_for_file(file.path)
     file.language = lang.lang if lang else None
@@ -146,7 +142,7 @@ def _process_file(
 
     tree = lang.parse_file(file.path)
 
-    # log.debug(f"growing nodes for {file}")
+    # log.debug(f"growing nodes for {file.path}")
     t_start = time.time()
     t_notified = False
     cursor = tree.walk()
@@ -158,7 +154,12 @@ def _process_file(
     batch_writes = []
     try:
         # with driver.session() as session:
-        with nullcontext():
+        with db.begin_batch_execution() as bdb:
+            graph = bdb.graph('wst')
+            edge_fromfile = graph.edge_collection('wst-fromfile')
+            edge_nodeparent = graph.edge_collection('wst-nodeparent')
+            edge_nodetext = graph.edge_collection('wst-nodetext')
+
             # definitions: nn = new node, nt = new text, nc = node count
             while cursor.node is not None:
                 cur_node = cursor.node
@@ -170,6 +171,7 @@ def _process_file(
                 )
                 (nn.x1,nn.y1) = cur_node.start_point
                 (nn.x2,nn.y2) = cur_node.end_point
+                parentorder = parent_stack[-1] if parent_stack else None
 
                 # bail if we can't decode text
                 try:
@@ -181,10 +183,12 @@ def _process_file(
                     file.update_in_db(db)
                     return file # ends process
 
-                nn.insert_in_db(db)
-                node_q.put(1)
-                order_to_id[nn.preorder] = nn._key
+                nn.insert_in_db(bdb)
+                order_to_id[nn.preorder] = nn._id
                 edge_fromfile.insert(nn / file)
+                if parentorder is not None:
+                    edge_nodeparent.insert(nn / order_to_id[parentorder])
+
                 # if root_written:
                 #     nnd.parentorder = parent_stack[-1]
                 #     batch_writes.append(nnd)
@@ -206,6 +210,8 @@ def _process_file(
                 #         nnid = create_WSTNode_root(tx, nnd)
                 #         order_to_id[0] = nnid
                 #     root_written = True
+                if node_q:
+                    node_q.put(1)
 
                 preorder += 1
 
@@ -226,14 +232,16 @@ def _process_file(
                         # we are done iterating
                         if len(parent_stack) != 0:
                             log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
-                        if batch_writes:
-                            batch_insert_WSTNode(session, batch_writes, order_to_id)
-                            if node_q:
-                                node_q.put(len(batch_writes))
+                        # if batch_writes:
+                        #     batch_insert_WSTNode(session, batch_writes, order_to_id)
+                        #     if node_q:
+                        #         node_q.put(len(batch_writes))
+                        # log.debug(f"{file.path} added {preorder} nodes")
                         return file # end process
     except Exception as e:
         file.error = str(e)
         file.update_in_db(db)
+        log.err(f"hmm: {e}")
         raise e
-    # finally:
-    #     driver.close()
+    finally:
+        log.info(f"file {file.path} done")

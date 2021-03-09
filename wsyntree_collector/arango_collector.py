@@ -17,7 +17,7 @@ from pebble import ProcessPool, ThreadPool
 from wsyntree import log
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
-from wsyntree.utils import list_all_git_files, pushd, strip_url
+from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex
 from .arango_collector_worker import _tqdm_node_receiver, _process_file
 
 
@@ -136,7 +136,29 @@ class WST_ArangoTreeCollector():
         self._coll['wstrepos'].insert(nr.__dict__)
 
         # file-level processing
-        file_paths = []
+        files = []
+        if self._worker_count == 1:
+            with pushd(self._local_repo_path):
+                index = self._get_git_repo().index
+                index.read()
+                for gobj in tqdm(index, desc="scanning git"):
+                    if not os.path.isfile(gobj.path):
+                        continue
+                    nf = WSTFile(
+                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
+                        path=gobj.path,
+                        oid=gobj.hex,
+                    )
+                    files.append(nf)
+                log.info(f"{len(files)} to process")
+                for file in files:
+                    try:
+                        r = _process_file(file, self._tree_repo, self.database_conn_str)
+                        log.debug(f"{file.path} processing done: {r}")
+                    except Exception as e:
+                        log.err(f"during {file.path}, document {file._key}")
+                        raise e
+                return
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
             self._node_queue = self._mp_manager.Queue()
             node_receiver = _tqdm_node_receiver(self._node_queue)
@@ -158,13 +180,14 @@ class WST_ArangoTreeCollector():
                     ret_futures.append(executor.schedule(
                         _process_file,
                         (nf, self._tree_repo, self.database_conn_str),
-                        {'node_q': self._node_queue}
+                        # {'node_q': self._node_queue}
                     ))
                 log.info(f"processing files with {self._worker_count} workers ...")
                 try:
                     for r in tqdm(futures.as_completed(ret_futures), total=len(ret_futures), desc="processing files"):
                         nf = r.result()
-                        # log.debug(f"added {nf}")
+                        # s = str(nf)
+                        log.debug(f"result {nf}")
                 except KeyboardInterrupt as e:
                     log.warn(f"stopping collection ...")
                     for rf in ret_futures:
@@ -172,8 +195,9 @@ class WST_ArangoTreeCollector():
                     executor.close()
                     executor.join(5)
                     executor.stop()
-                    self._node_queue.put(None)
                     # raise e
+                finally:
+                    self._node_queue.put(None)
             self._node_queue.put(None)
 
     def setup(self):

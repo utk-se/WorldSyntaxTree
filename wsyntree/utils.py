@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import contextlib
+import hashlib
 from urllib.parse import urlparse
 
 import pygit2 as git
@@ -63,3 +64,6 @@ class dotdict(dict):
 def strip_url(u):
     p = urlparse(u)
     return f"{p.scheme}://{p.hostname}:{p.port}"
+
+def sha1hex(s: str) -> str:
+    return hashlib.sha1(s.encode()).hexdigest()

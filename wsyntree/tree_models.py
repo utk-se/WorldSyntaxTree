@@ -18,26 +18,39 @@ class WST_Document():
             setattr(self, k, v)
 
     @property
+    def _id(self):
+        return f"{self._collection}/{self._key}"
+
+    @property
     def __dict__(self):
         slots = chain.from_iterable([getattr(cls, '__slots__', tuple()) for cls in type(self).__mro__])
         return {s: getattr(self, s, None) for s in slots}
 
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
         """Insert this document into a db"""
+        assert self._key
         coll = db.collection(self._collection)
         return coll.insert(self.__dict__)
 
     def update_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
+        assert self._key
         coll = db.collection(self._collection)
         return coll.update(self.__dict__)
 
     def _make_edge(self, rhs):
-        if not isinstance(rhs, WST_Document):
+        _to = None
+        if type(rhs) == str:
+            _to = rhs
+            _kc = rhs.split('/')[1]
+        elif isinstance(rhs, WST_Document):
+            _to = f"{rhs._collection}/{rhs._key}"
+            _kc = rhs._key
+        else:
             raise TypeError(f"Cannot create edges between {type(self)} and {type(rhs)}")
         return {
-            "_key": f"{self._key}+{rhs._key}",
+            "_key": f"{self._key}+{_kc}",
             "_from": f"{self._collection}/{self._key}",
-            "_to": f"{rhs._collection}/{rhs._key}",
+            "_to": _to,
         }
     __floordiv__ = _make_edge
     __truediv__ = _make_edge
