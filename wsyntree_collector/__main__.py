@@ -33,24 +33,8 @@ def database_init(args):
     p = urlparse(args.db)
     db = client.db(p.path[1:], username=p.username, password=p.password)
 
-    colls = {}
-    for cn in ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']:
-        if db.has_collection(cn):
-            colls[cn] = db.collection(cn)
-        else:
-            colls[cn] = db.create_collection(cn, user_keys=True)
-    for cn in ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']:
-        if db.has_collection(cn):
-            colls[cn] = db.collection(cn)
-        else:
-            colls[cn] = db.create_collection(cn, user_keys=True, edge=True)
-
-    graph = None
-    if not db.has_graph('wst'):
-        graph = db.create_graph('wst')
-    else:
-        graph = db.graph('wst')
-    edgedefs = {}
+    newdcls = ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']
+    newecls = ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']
     _ngraphs = {
         "wst-repo-files": {
             "edge_collection": 'wst-fromrepo',
@@ -73,6 +57,33 @@ def database_init(args):
             "to_vertex_collections": ['wsttexts'],
         },
     }
+
+    if args.delete:
+        db.delete_graph('wst', ignore_missing=True)
+        for c in newdcls:
+            db.delete_collection(c, ignore_missing=True)
+        for c in newecls:
+            db.delete_collection(c, ignore_missing=True)
+
+    colls = {}
+    for cn in newdcls:
+        if db.has_collection(cn):
+            colls[cn] = db.collection(cn)
+        else:
+            colls[cn] = db.create_collection(cn, user_keys=True)
+    for cn in newecls:
+        if db.has_collection(cn):
+            colls[cn] = db.collection(cn)
+        else:
+            colls[cn] = db.create_collection(cn, user_keys=True, edge=True)
+
+    graph = None
+    if not db.has_graph('wst'):
+        graph = db.create_graph('wst')
+    else:
+        graph = db.graph('wst')
+    edgedefs = {}
+
     for gk, gv in _ngraphs.items():
         if not graph.has_edge_definition(gv['edge_collection']):
             log.debug(f"Added graph edges {gv}")
@@ -118,6 +129,11 @@ def __main__():
     cmd_db_init = subcmds_db.add_parser(
         'initialize', aliases=['init', 'setup'], help="Set up the database")
     cmd_db_init.set_defaults(func=database_init)
+    cmd_db_init.add_argument(
+        "-d", "--delete",
+        help="Delete any existing data in the database",
+        action="store_true",
+    )
     args = parser.parse_args()
 
     if args.verbose:

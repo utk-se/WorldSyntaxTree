@@ -15,11 +15,10 @@ from tqdm import tqdm
 from pebble import ProcessPool, ThreadPool
 
 from wsyntree import log
-from wsyntree.tree_models import (
-    WSTRepository, WSTFile, WSTNode, WSTText
-)
+from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import list_all_git_files, pushd, strip_url
+from .arango_collector_worker import _tqdm_node_receiver, _process_file
 
 
 class WST_ArangoTreeCollector():
@@ -60,7 +59,9 @@ class WST_ArangoTreeCollector():
     ### NOTE private control functions:
 
     def _connect_db(self):
-        self._client = client = ArangoClient(hosts=strip_url(self.database_conn_str))
+        self._client = client = ArangoClient(
+            hosts=strip_url(self.database_conn_str),
+        )
         self._db = self._client.db(
             self._db_database,
             username=self._db_username,
@@ -143,11 +144,20 @@ class WST_ArangoTreeCollector():
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []
-                for p in tqdm(list_all_git_files(self._get_git_repo())):
-                    file_paths.append(p)
+                index = self._get_git_repo().index
+                index.read()
+                for gobj in tqdm(index):
+                    if not os.path.isfile(gobj.path):
+                        continue
+                    nf = WSTFile(
+                        _key=f"{nr.commit}-{gobj.hex}",
+                        path=gobj.path,
+                        oid=gobj.hex,
+                    )
+                    # file_paths.append(p)
                     ret_futures.append(executor.schedule(
                         _process_file,
-                        (p, self._tree_repo),
+                        (nf, self._tree_repo, self.database_conn_str),
                         {'node_q': self._node_queue}
                     ))
                 log.info(f"processing files with {self._worker_count} workers ...")
