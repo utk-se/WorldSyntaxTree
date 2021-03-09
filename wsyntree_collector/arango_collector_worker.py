@@ -16,91 +16,18 @@ from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
 @concurrent.process
 def _tqdm_node_receiver(q):
-    log.debug(f"started counting added nodes")
+    log.debug(f"start counting db inserts...")
     n = 0
-    with tqdm(desc="adding nodes to db", position=1, unit='nodes', unit_scale=True) as tbar:
+    with tqdm(desc="writing documents to db", position=1, unit='nodes', unit_scale=True) as tbar:
         while (nc := q.get()) is not None:
             n += nc
             tbar.update(nc)
-    log.info(f"stopped counting nodes, total WSTNodes added: {n}")
+    log.info(f"stopped counting nodes, total documents inserted: {n}")
 
-# def create_WSTNode_root(tx, data: dict) -> int:
-#     """Exactly the same as create_WSTNode, but with no parent node
-#
-#     Should only ever happen once per file. (the root / first node)
-#     """
-#     text = data['text']
-#     n_t = "WSTIndexableText" if len(text) <= 4e3 else "WSTHugeText"
-#     q = """
-#     match (f:WSTFile)
-#     where id(f) = $fileid
-#     create (nn:WSTNode {
-#         x1: $x1, x2: $x2, y1: $y1, y2: $y2,
-#         named: $named, type: $type, preorder: $preorder
-#     })-[:IN_FILE]->(f), (nn)-[:CONTENT]->(t:WSTText:"""+n_t+""" {
-#         length: $textlength,
-#         text: $text
-#     })
-#     return id(nn) as node_id"""
-#     result = tx.run(q, data)
-#     record = result.single()
-#     return record["node_id"]
-
-# # milliseconds timeout
-# @neo4j.unit_of_work(timeout=30 * 60 * 1000)
-# def managed_batch_insert(tx, entries: list, order_to_id_o: dict) -> dict:
-#     order_to_id = order_to_id_o.copy() # stay pure until tx successful
-#     qi = """
-#     unwind $entries as data
-#     match (f:WSTFile)
-#     where id(f) = data.fileid
-#     create (f)<-[:IN_FILE]-(c:WSTNode {
-#         x1: data.x1, x2: data.x2, y1: data.y1, y2: data.y2,
-#         named: data.named, type: data.type, preorder: data.preorder
-#     })-[:CONTENT]->(t:WSTText {
-#         length: data.textlength,
-#         text: data.text
-#     })
-#     return c.preorder as preorder, id(c) as cid, data.parentorder as parentorder order by c.preorder
-#     """
-#     nresults = tx.run(qi, {"entries": entries})
-#
-#     nvals = nresults.data()
-#     assert len(nvals) == len(entries), f"Ensure all nodes were created."
-#
-#     # use a dict for constant-time order to nodeid:
-#     # create a list of all the parent connections we need to make:
-#     rp_list = []
-#     for v in nvals:
-#         order_to_id[v['preorder']] = v['cid']
-#         rp_list.append({
-#             "cid": v['cid'],
-#             "pid": order_to_id[v['parentorder']],
-#         })
-#
-#     qr = """
-#     unwind $connectlist as ctpi
-#     match (c:WSTNode), (p:WSTNode)
-#     where id(c) = ctpi.cid and id(p) = ctpi.pid
-#     create (c)-[r:PARENT]->(p)
-#     return id(c) as cid, id(p) as pid, id(r) as rid order by c.preorder
-#     """
-#     rresults = tx.run(qr, {"connectlist": rp_list})
-#
-#     rvals = rresults.data()
-#     # assert len(nvals) == len(rvals), f"Ensure every child gets a parent node relation."
-#     assert len(rvals) == len(entries), f"batch write size {len(entries)} made {len(rvals)} parent connections"
-#     for v in rvals:
-#         assert v['rid']
-#
-#     return order_to_id
-
-# def batch_insert_WSTNode(session, entries: list, order_to_id: dict) -> int:
-#     n_addt = session.write_transaction(managed_batch_insert, entries, order_to_id)
-#     order_to_id.update(n_addt)
-
-def batch_insert_WSTNode(db, nodes: list):
-    pass
+def batch_insert_WSTNode(db, stuff_to_insert):
+    with db.begin_batch_execution() as bdb:
+        for thing in stuff_to_insert:
+            thing.insert_in_db(bdb)
 
 def process_file(*args, **kwargs):
     try:
@@ -115,7 +42,7 @@ def _process_file(
         database_conn_str: str,
         *,
         node_q = None,
-        batch_write_size=100,
+        batch_write_size=1000,
     ):
     """Runs one file's analysis from a repo.
 
@@ -160,12 +87,11 @@ def _process_file(
     root_written = False
     batch_writes = []
     try:
-        # with driver.session() as session:
         with db.begin_batch_execution() as bdb:
-            graph = bdb.graph('wst')
-            edge_fromfile = graph.edge_collection('wst-fromfile')
-            edge_nodeparent = graph.edge_collection('wst-nodeparent')
-            edge_nodetext = graph.edge_collection('wst-nodetext')
+            # graph = bdb.graph('wst')
+            # edge_fromfile = graph.edge_collection('wst-fromfile')
+            # edge_nodeparent = graph.edge_collection('wst-nodeparent')
+            # edge_nodetext = graph.edge_collection('wst-nodetext')
 
             # definitions: nn = new node, nt = new text, nc = node count
             while cursor.node is not None:
@@ -190,35 +116,28 @@ def _process_file(
                     file.update_in_db(db)
                     return file # ends process
 
-                nn.insert_in_db(bdb)
+                # nn.insert_in_db(bdb)
+                batch_writes.append(nn)
                 order_to_id[nn.preorder] = nn._id
-                edge_fromfile.insert(nn / file)
+                # edge_fromfile.insert(nn / file)
+                batch_writes.append(nn / file)
                 if parentorder is not None:
-                    edge_nodeparent.insert(nn / order_to_id[parentorder])
+                    # edge_nodeparent.insert(nn / order_to_id[parentorder])
+                    batch_writes.append(nn / order_to_id[parentorder])
 
-                # if root_written:
-                #     nnd.parentorder = parent_stack[-1]
-                #     batch_writes.append(nnd)
-                #     # batch write check:
-                #     if len(batch_writes) >= batch_write_size:
-                #         # log.debug(f"batch insert {len(batch_writes)}...")
-                #         batch_insert_WSTNode(session, batch_writes, order_to_id)
-                #         # progress reporting: desired to evaluate node insertion performance
-                #         if node_q:
-                #             node_q.put(len(batch_writes))
-                #             if not t_notified and time.time() > t_start + (30*60):
-                #                 log.warn(f"{file}: processing taking longer than expected.")
-                #                 t_notified = True
-                #         batch_writes = []
-                # else:
-                #     # log.debug("writing root node...")
-                #     # root node is a different query
-                #     with session.begin_transaction() as tx:
-                #         nnid = create_WSTNode_root(tx, nnd)
-                #         order_to_id[0] = nnid
-                #     root_written = True
-                if node_q:
-                    node_q.put(1)
+                if len(batch_writes) >= batch_write_size:
+                    # log.debug(f"batch insert {len(batch_writes)}...")
+                    batch_insert_WSTNode(db, batch_writes)
+                    # progress reporting: desired to evaluate node insertion performance
+                    if node_q:
+                        node_q.put(len(batch_writes))
+                    if not t_notified and time.time() > t_start + (30*60):
+                        log.warn(f"{file.path}: processing taking longer than expected.")
+                        t_notified = True
+                    batch_writes = []
+
+                # if node_q:
+                #     node_q.put(1)
 
                 preorder += 1
 
@@ -239,10 +158,10 @@ def _process_file(
                         # we are done iterating
                         if len(parent_stack) != 0:
                             log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
-                        # if batch_writes:
-                        #     batch_insert_WSTNode(session, batch_writes, order_to_id)
-                        #     if node_q:
-                        #         node_q.put(len(batch_writes))
+                        if batch_writes:
+                            batch_insert_WSTNode(db, batch_writes)
+                            if node_q:
+                                node_q.put(len(batch_writes))
                         # log.debug(f"{file.path} added {preorder} nodes")
                         return file # end process
     except Exception as e:

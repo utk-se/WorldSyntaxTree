@@ -4,6 +4,7 @@ from multiprocessing import Pool
 import sys
 import os
 from urllib.parse import urlparse
+import time
 
 import pygit2 as git
 from arango import ArangoClient
@@ -31,7 +32,7 @@ def analyze(args):
 def database_init(args):
     client = ArangoClient(hosts=strip_url(args.db))
     p = urlparse(args.db)
-    db = client.db(p.path[1:], username=p.username, password=p.password)
+    odb = client.db(p.path[1:], username=p.username, password=p.password)
 
     newdcls = ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']
     newecls = ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']
@@ -59,11 +60,31 @@ def database_init(args):
     }
 
     if args.delete:
-        db.delete_graph('wst', ignore_missing=True)
+        log.warn(f"deleting all data ...")
+        # deleting old stuff could take awhile
+        jobs = []
+        db = odb.begin_async_execution()
+
+        jobs.append(db.delete_graph('wst', ignore_missing=True))
         for c in newdcls:
-            db.delete_collection(c, ignore_missing=True)
+            jobs.append(db.delete_collection(c, ignore_missing=True))
         for c in newecls:
-            db.delete_collection(c, ignore_missing=True)
+            jobs.append(db.delete_collection(c, ignore_missing=True))
+
+        jt_wait = len(jobs)
+        while len(jobs) > 0:
+            time.sleep(1)
+            for j in jobs:
+                if j.status() == 'done':
+                    jobs.remove(j)
+            if jt_wait != len(jobs):
+                log.debug(f"delete: waiting on {len(jobs)} jobs to finish ...")
+                jt_wait = len(jobs)
+
+        # back to non-async
+        db = odb
+
+    log.info(f"Creating collections ...")
 
     colls = {}
     for cn in newdcls:
