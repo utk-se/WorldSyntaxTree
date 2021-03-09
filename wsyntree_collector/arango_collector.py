@@ -80,7 +80,7 @@ class WST_ArangoTreeCollector():
 
     def _get_git_repo(self):
         repodir = self._local_repo_path
-        if not repodir.exists():
+        if not (repodir / '.git').exists():
             repodir.mkdir(mode=0o770, parents=True)
             log.debug(f"{self} cloning repo...")
             return git.clone_repository(
