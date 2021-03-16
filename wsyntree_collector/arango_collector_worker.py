@@ -10,7 +10,7 @@ from tqdm import tqdm
 from pebble import concurrent
 
 from wsyntree import log
-from wsyntree.utils import dotdict, strip_url
+from wsyntree.utils import dotdict, strip_url, sha1hex
 from wsyntree.tree_models import * # __all__
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
@@ -97,7 +97,7 @@ def _process_file(
             while cursor.node is not None:
                 cur_node = cursor.node
                 nn = WSTNode(
-                    _key=f"{tree_repo.commit}-{file.oid}-{preorder}",
+                    _key=f"{tree_repo.commit}-{file.oid}-{sha1hex(file.path)}-{preorder}",
                     named=cur_node.is_named,
                     type=cur_node.type,
                     preorder=preorder,

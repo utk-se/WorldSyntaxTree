@@ -132,12 +132,11 @@ class WST_ArangoTreeCollector():
             commit=self._current_commit_hash,
             path=self._url_path,
             analyzed_time=int(time.time()),
+            wst_status="started",
         )
-        # nr.save()
         self._tree_repo = nr
-        # log.debug(f"{nr} is hosted on {self._tree_scm_host}")
-        # nr.host.connect(self._tree_scm_host)
-        self._coll['wstrepos'].insert(nr.__dict__)
+        # self._coll['wstrepos'].insert(nr.__dict__)
+        nr.insert_in_db(self._db)
 
         # file-level processing
         files = []
@@ -162,6 +161,8 @@ class WST_ArangoTreeCollector():
                     except Exception as e:
                         log.err(f"during {file.path}, document {file._key}")
                         raise e
+                self._tree_repo.wst_status = "completed"
+                self._tree_repo.update_in_db(self._db)
                 return
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
             self._node_queue = self._mp_manager.Queue()
@@ -192,6 +193,9 @@ class WST_ArangoTreeCollector():
                         nf = r.result()
                         # s = str(nf)
                         # log.debug(f"result {nf}")
+                    # after all results returned
+                    self._tree_repo.wst_status = "completed"
+                    self._tree_repo.update_in_db(self._db)
                 except KeyboardInterrupt as e:
                     log.warn(f"stopping collection ...")
                     for rf in ret_futures:
@@ -200,6 +204,12 @@ class WST_ArangoTreeCollector():
                     executor.join(5)
                     executor.stop()
                     # raise e
+                    self._tree_repo.wst_status = "cancelled"
+                    self._tree_repo.update_in_db(self._db)
+                except Exception as e:
+                    self._tree_repo.wst_status = "error"
+                    self._tree_repo.update_in_db(self._db)
+                    raise e
                 finally:
                     self._node_queue.put(None)
             self._node_queue.put(None)
