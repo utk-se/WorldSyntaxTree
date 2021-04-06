@@ -1,5 +1,6 @@
 
 import os
+import itertools
 from pathlib import Path
 import contextlib
 import hashlib
@@ -60,6 +61,11 @@ class dotdict(dict):
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+def chunkiter(seq, size):
+    it = iter(seq)
+    while chunk := tuple(itertools.islice(it, size)):
+        yield chunk
 
 def strip_url(u):
     p = urlparse(u)

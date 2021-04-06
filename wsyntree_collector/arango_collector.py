@@ -14,10 +14,10 @@ import pygit2 as git
 from tqdm import tqdm
 from pebble import ProcessPool, ThreadPool
 
-from wsyntree import log
+from wsyntree import log, tree_models
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
-from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex
+from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex, chunkiter
 from .arango_collector_worker import _tqdm_node_receiver, process_file
 
 
@@ -49,8 +49,10 @@ class WST_ArangoTreeCollector():
         self._db_password = ur.password or 'wst'
         self._db_database = ur.path[1:] or 'wst'
         self._coll = {} # collections
-        self._graph = {}
-        self._db = None # unconnected
+        self._vert_colls = {}
+        # unconnected:
+        self._db = None
+        self._graph = None
 
         self._target_commit = commit_sha
         self._tree_repo = None
@@ -71,15 +73,15 @@ class WST_ArangoTreeCollector():
             password=self._db_password,
         )
 
-        clls = [
-            'wstfiles', 'wstrepos', 'wstnodes', 'wsttexts',
-            'wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext'
-        ]
+        vert_colls = ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']
+        edge_colls = ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']
+        clls = vert_colls + edge_colls
         for cn in clls:
             self._coll[cn] = self._db.collection(cn)
-        graphs = ["wst-repo-files", "wst-file-nodes", "wst-node-parents", "wst-node-text"]
-        for cn in graphs:
-            self._graph[cn] = self._db.graph(cn)
+        self._graph = self._db.graph(tree_models._graph_name)
+
+        for ecn in vert_colls:
+            self._vert_colls[ecn] = self._graph.vertex_collection(ecn)
 
     def _get_git_repo(self):
         repodir = self._local_repo_path
@@ -133,11 +135,23 @@ class WST_ArangoTreeCollector():
         if self._tree_repo is None:
             raise RuntimeError(f"Repo does not exist in db.")
 
+        nodechunksize = 1000
         files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
         for f in files:
+            nodes = WSTNode.iterate_from_parent(self._db, f)
+            for chunk in chunkiter(nodes, nodechunksize):
+                with self._db.begin_batch_execution() as bdb:
+                    graph = bdb.graph(tree_models._graph_name)
+                    vertcoll = graph.vertex_collection(WSTNode._collection)
+                    log.debug(f"Deleting {len(chunk)} nodes of {f.path}")
+                    for n in chunk:
+                        vertcoll.delete(n._key)
             log.debug(f"Delete file {f.path}")
-            # TODO
-        raise NotImplementedError()
+            self._vert_colls[WSTFile._collection].delete(f._key)
+        log.debug(f"Deleted files & nodes")
+        self._vert_colls[WSTRepository._collection].delete(self._tree_repo._key)
+        log.info(f"Deleted repo {self._tree_repo['url']} @ {self._tree_repo['commit']}")
+        self._tree_repo = None
 
     def collect_all(self):
         """Creates every node down the tree for this repo"""
