@@ -5,6 +5,7 @@ from json import JSONEncoder
 
 from arango.database import StandardDatabase, BatchDatabase
 
+from . import log
 from .utils import dotdict
 
 __all__ = [
@@ -21,9 +22,36 @@ class WST_Document():
     ]
     _edge_to = None
 
+    @classmethod
+    def get(cls, db, key):
+        """Return an instance by key
+
+        Returns None if document by key does not exist.
+        """
+        collection = db.collection(cls._collection)
+        document = collection.get(key)
+        return cls(**document) if document is not None else None
+
     def __init__(self, *args, **kwargs):
+        # slots = chain.from_iterable([getattr(cls, '__slots__', tuple()) for cls in type(self).__mro__])
         for k, v in kwargs.items():
-            setattr(self, k, v)
+            try:
+                setattr(self, k, v)
+            except AttributeError as e:
+                if k == "_id":
+                    # attr is @parameter / automatic
+                    continue
+                    # log.debug(f"ignore {k} = {v}")
+
+    @classmethod
+    def iterate_from_parent(cls, db, parent):
+        """Iterate vertexes connected towards parent"""
+        graph = db.graph(_graph_name)
+        edge_coll = graph.edge_collection(cls._edge_to[parent._collection])
+
+        edges = edge_coll.edges(parent.__dict__, "in")['edges']
+        for e in edges:
+            yield cls.get(db, e['_from'])
 
     @property
     def _id(self):
@@ -40,7 +68,13 @@ class WST_Document():
     @property
     def __dict__(self):
         slots = chain.from_iterable([getattr(cls, '__slots__', tuple()) for cls in type(self).__mro__])
-        return {s: getattr(self, s, None) for s in slots if not s.startswith('__')}
+        attrs = {
+            s: getattr(self, s, None) for s in slots if not s.startswith('__')
+        }
+        return {
+            **attrs,
+            "_id": self._id,
+        }
 
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
         """Insert this document into a db"""
@@ -55,20 +89,6 @@ class WST_Document():
 
     def _make_edge(self, rhs):
         return WST_Edge(self, rhs)
-        # _to = None
-        # if type(rhs) == str:
-        #     _to = rhs
-        #     _kc = rhs.split('/')[1]
-        # elif isinstance(rhs, WST_Document):
-        #     _to = f"{rhs._collection}/{rhs._key}"
-        #     _kc = rhs._key
-        # else:
-        #     raise TypeError(f"Cannot create edges between {type(self)} and {type(rhs)}")
-        # return {
-        #     "_key": f"{self._key}+{_kc}",
-        #     "_from": f"{self._collection}/{self._key}",
-        #     "_to": _to,
-        # }
     __floordiv__ = _make_edge
     __truediv__ = _make_edge
 

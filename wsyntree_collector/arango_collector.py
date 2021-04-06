@@ -27,7 +27,8 @@ class WST_ArangoTreeCollector():
             repo_url: str,
             *,
             database_conn: str = "http://wst:wst@localhost:8529/wst",
-            workers: int = None
+            workers: int = None,
+            commit_sha: str = None,
         ):
         """
         database_conn: Full URI including user:password@host:port/database
@@ -49,7 +50,9 @@ class WST_ArangoTreeCollector():
         self._db_database = ur.path[1:] or 'wst'
         self._coll = {} # collections
         self._graph = {}
+        self._db = None # unconnected
 
+        self._target_commit = commit_sha
         self._tree_repo = None
 
         self._worker_count = workers or os.cpu_count()
@@ -119,7 +122,21 @@ class WST_ArangoTreeCollector():
 
     def delete_all_tree_data(self):
         """Delete all data in the tree associated with this repo object"""
-        # TODO
+        if not self._db:
+            self._connect_db()
+        if not self._tree_repo:
+            log.info(f"Attempting to fetch WSTRepository document from db...")
+            if self._target_commit:
+                self._tree_repo = WSTRepository.get(self._db, self._target_commit)
+            else:
+                self._tree_repo = WSTRepository.get(self._db, self._current_commit_hash)
+        if self._tree_repo is None:
+            raise RuntimeError(f"Repo does not exist in db.")
+
+        files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
+        for f in files:
+            log.debug(f"Delete file {f.path}")
+            # TODO
         raise NotImplementedError()
 
     def collect_all(self):
@@ -218,3 +235,4 @@ class WST_ArangoTreeCollector():
         """Clone the repo, connect to the DB, create working directories, etc."""
         self._connect_db()
         self._get_git_repo()
+        # TODO checkout self._target_commit

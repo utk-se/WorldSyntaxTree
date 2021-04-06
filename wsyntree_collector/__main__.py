@@ -29,6 +29,21 @@ def analyze(args):
         log.crit(f"{collector} run failed.")
         raise e
 
+def delete(args):
+    if '/' in args.which_repo:
+        # it's a URL/URI
+        collector = WST_ArangoTreeCollector(
+            args.which_repo,
+            database_conn=args.db,
+        )
+    else:
+        # find by commit
+        collector = WST_ArangoTreeCollector(
+            None, # this collector only used to delete
+            commit_sha=args.which_repo,
+        )
+    collector.delete_all_tree_data()
+
 def database_init(args):
     client = ArangoClient(hosts=strip_url(args.db))
     p = urlparse(args.db)
@@ -142,6 +157,15 @@ def __main__():
         type=int,
         help="Number of workers to use for processing files, default: os.cpu_count()",
         default=None
+    )
+    # delete data selectively
+    cmd_delete = subcmds.add_parser(
+        'delete', aliases=['del'], help="Delete tree data selectively")
+    cmd_delete.set_defaults(func=delete)
+    cmd_delete.add_argument(
+        "which_repo",
+        type=str,
+        help="URI or commit SHA for which repo's data to delete"
     )
     # db setup
     cmd_db = subcmds.add_parser(
