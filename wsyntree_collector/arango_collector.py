@@ -150,7 +150,7 @@ class WST_ArangoTreeCollector():
             self._vert_colls[WSTFile._collection].delete(f._key)
         log.debug(f"Deleted files & nodes")
         self._vert_colls[WSTRepository._collection].delete(self._tree_repo._key)
-        log.info(f"Deleted repo {self._tree_repo['url']} @ {self._tree_repo['commit']}")
+        log.info(f"Deleted repo {self._tree_repo.url} @ {self._tree_repo.commit}")
         self._tree_repo = None
 
     def collect_all(self):
