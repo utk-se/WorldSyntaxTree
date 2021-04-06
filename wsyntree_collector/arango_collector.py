@@ -138,14 +138,14 @@ class WST_ArangoTreeCollector():
         nodechunksize = 1000
         files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
         for f in files:
-            nodes = WSTNode.iterate_from_parent(self._db, f)
+            nodes = WSTNode.iterate_from_parent(self._db, f, return_inflated=False)
             for chunk in chunkiter(nodes, nodechunksize):
                 with self._db.begin_batch_execution() as bdb:
                     graph = bdb.graph(tree_models._graph_name)
                     vertcoll = graph.vertex_collection(WSTNode._collection)
                     log.debug(f"Deleting {len(chunk)} nodes of {f.path}")
                     for n in chunk:
-                        vertcoll.delete(n._key)
+                        vertcoll.delete(n)
             log.debug(f"Delete file {f.path}")
             self._vert_colls[WSTFile._collection].delete(f._key)
         log.debug(f"Deleted files & nodes")

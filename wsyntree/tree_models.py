@@ -44,14 +44,14 @@ class WST_Document():
                     # log.debug(f"ignore {k} = {v}")
 
     @classmethod
-    def iterate_from_parent(cls, db, parent):
+    def iterate_from_parent(cls, db, parent, return_inflated = True):
         """Iterate vertexes connected towards parent"""
         graph = db.graph(_graph_name)
         edge_coll = graph.edge_collection(cls._edge_to[parent._collection])
 
         edges = edge_coll.edges(parent.__dict__, "in")['edges']
         for e in edges:
-            yield cls.get(db, e['_from'])
+            yield cls.get(db, e['_from']) if return_inflated else e['_from']
 
     @property
     def _id(self):
