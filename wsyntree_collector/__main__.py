@@ -12,6 +12,7 @@ from arango import ArangoClient
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url
+from wsyntree.tree_models import WSTRepository
 
 from .arango_collector import WST_ArangoTreeCollector
 
@@ -22,6 +23,14 @@ def analyze(args):
         database_conn=args.db,
     )
     collector.setup()
+
+    # check if exists already
+    if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
+        if args.skip_exists:
+            log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
+            return
+        else:
+            raise FileExistsError(f"Repo document already exists: {repo.__dict__}")
 
     try:
         collector.collect_all()
@@ -157,6 +166,11 @@ def __main__():
         type=int,
         help="Number of workers to use for processing files, default: os.cpu_count()",
         default=None
+    )
+    cmd_analyze.add_argument(
+        "--skip-exists", "--skip-existing",
+        action="store_true",
+        help="Skip the analysis if the repo document already exists in the database"
     )
     # delete data selectively
     cmd_delete = subcmds.add_parser(
