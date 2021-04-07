@@ -134,6 +134,10 @@ class WST_ArangoTreeCollector():
                 self._tree_repo = WSTRepository.get(self._db, self._current_commit_hash)
         if self._tree_repo is None:
             raise RuntimeError(f"Repo does not exist in db.")
+        if self._tree_repo.wst_status != "deleting":
+            log.info(f"Repo status {self._tree_repo.wst_status} -> deleting")
+            self._tree_repo.wst_status = "deleting"
+            self._tree_repo.update_in_db(self._db)
 
         nodechunksize = 1000
         files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
