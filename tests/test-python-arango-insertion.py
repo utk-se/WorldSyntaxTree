@@ -5,16 +5,15 @@ import argparse
 import cProfile
 import uuid
 from multiprocessing import Queue, Manager
+from urllib.parse import urlparse
 
-from neomodel import config as neoconfig
+from arango import ArangoClient
 
 from wsyntree import log
-from wsyntree.utils import node_as_sexp
+from wsyntree.utils import node_as_sexp, strip_url
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
-from wsyntree.tree_models import (
-    SCM_Host, WSTRepository, WSTFile, WSTNode, WSTText, WSTIndexableText, WSTHugeText
-)
-from wsyntree_collector import neo4j_collector_worker as wst_n4j_worker
+from wsyntree.tree_models import *
+from wsyntree_collector import arango_collector_worker as wst_arango_worker
 
 
 if __name__ == '__main__':
@@ -35,13 +34,20 @@ if __name__ == '__main__':
         "-v", "--verbose",
         action="store_true",
     )
+    parser.add_argument(
+        "--db", "--database",
+        type=str,
+        help="Database connection string",
+        default=os.environ.get('WST_DB_URI', "http://wst:wst@localhost:8529/wst")
+    )
 
     args = parser.parse_args()
     if args.verbose:
         log.setLevel(log.DEBUG)
 
-    if "NEO4J_BOLT_URL" in os.environ:
-        neoconfig.DATABASE_URL = os.environ["NEO4J_BOLT_URL"]
+    client = ArangoClient(hosts=strip_url(args.db))
+    p = urlparse(args.db)
+    db = client.db(p.path[1:], username=p.username, password=p.password)
 
     lang = TreeSitterAutoBuiltLanguage(args.language)
 
@@ -57,20 +63,27 @@ if __name__ == '__main__':
     test_id = str(uuid.uuid4().hex)
 
     repo = WSTRepository(
+        _key="wst0test0461b1c841f897cbd952354370471a64",
         type='test',
         url=f"wst.tests.insertion/{test_id}",
-        analyzed_commit="N/A",
+        commit="wst0test0461b1c841f897cbd952354370471a64",
         path=f"wst/tests/{test_id}",
     )
-    repo.save()
+    repo.insert_in_db(db)
+    file = WSTFile(
+        _key="wst0test0461b1c841f897cbd952354370471a64-0",
+        oid="testwst0",
+        path=args.file_path,
+        language=args.language,
+    )
 
     with Manager() as _mp_manager:
         _node_queue = _mp_manager.Queue()
-        node_receiver = wst_n4j_worker._tqdm_node_receiver(_node_queue)
+        node_receiver = wst_arango_worker._tqdm_node_receiver(_node_queue)
 
         try:
             r = cProfile.run(
-                f'wst_n4j_worker._process_file(args.file_path, repo, node_q=_node_queue, batch_write_size=100)',
+                f'wst_arango_worker._process_file(file, repo, args.db, node_q=_node_queue)',
                 "test-insertion.prof",
             )
             log.info(f"{r}")

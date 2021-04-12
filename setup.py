@@ -17,7 +17,7 @@ setup(
     keywords='utk research',
     author='Ben Klein, Aiden Rutter',
     author_email='bklein3@vols.utk.edu',
-    url='',
+    url='https://github.com/utk-se/WorldSyntaxTree',
     # license='MIT',
     # dependency_links=[
     #     # 'https://github.com/utk-se/py-tree-sitter/tarball/master#egg=tree_sitter',
@@ -27,11 +27,11 @@ setup(
     include_package_data=True,
     zip_safe=False,
     install_requires=[
+        "python-arango",
         "coloredlogs",
         "pygit2",
         # "tree_sitter",
         "tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master",
-        "neomodel",
         "tqdm",
         "Pebble",
         "filelock"
