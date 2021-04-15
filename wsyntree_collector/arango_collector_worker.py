@@ -9,8 +9,8 @@ from arango import ArangoClient
 from tqdm import tqdm
 from pebble import concurrent
 
-from wsyntree import log
-from wsyntree.utils import dotdict, strip_url, sha1hex
+from wsyntree import log, tree_models
+from wsyntree.utils import dotdict, strip_url, sha1hex, sha512hex
 from wsyntree.tree_models import * # __all__
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
@@ -62,7 +62,7 @@ def _process_file(
         username=_db_username,
         password=_db_password,
     )
-    edge_fromrepo = db.graph('wst').edge_collection('wst-fromrepo')
+    edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
 
     lang = get_TSABL_for_file(file.path)
     file.language = lang.lang if lang else None
@@ -87,7 +87,7 @@ def _process_file(
     root_written = False
     batch_writes = []
     try:
-        with db.begin_batch_execution() as bdb:
+        with nullcontext():
             # graph = bdb.graph('wst')
             # edge_fromfile = graph.edge_collection('wst-fromfile')
             # edge_nodeparent = graph.edge_collection('wst-nodeparent')
@@ -125,6 +125,19 @@ def _process_file(
                     # edge_nodeparent.insert(nn / order_to_id[parentorder])
                     batch_writes.append(nn / order_to_id[parentorder])
 
+                # text storage (deduplication)
+                text_key = f"{textlength}-{sha512hex(cur_node.text.tobytes())}"
+                nt = WSTText.get(db, text_key)
+                if nt is None:
+                    nt = WSTText(
+                        _key=text_key,
+                        length=textlength,
+                        text=text,
+                    )
+                    batch_writes.append(nt)
+                # link node -> text
+                batch_writes.append(nn / nt)
+
                 if len(batch_writes) >= batch_write_size:
                     # log.debug(f"batch insert {len(batch_writes)}...")
                     batch_insert_WSTNode(db, batch_writes)
@@ -132,7 +145,7 @@ def _process_file(
                     if node_q:
                         node_q.put(len(batch_writes))
                     if not t_notified and time.time() > t_start + (30*60):
-                        log.warn(f"{file.path}: processing taking longer than expected.")
+                        log.warn(f"{file.path}: processing taking longer than expected, preorder at {preorder}")
                         t_notified = True
                     batch_writes = []
 

@@ -17,7 +17,9 @@ from pebble import ProcessPool, ThreadPool
 from wsyntree import log, tree_models
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
-from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex, chunkiter
+from wsyntree.utils import (
+    list_all_git_files, pushd, strip_url, sha1hex, chunkiter
+)
 from .arango_collector_worker import _tqdm_node_receiver, process_file
 
 

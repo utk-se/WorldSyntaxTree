@@ -171,6 +171,17 @@ class WSTText(WST_Document):
         "text",
     ]
 
+    def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
+        """WSTTexts might be duplicate
+
+        We prevent errors during insert if the document already exists:
+        They are perfectly equivalent, enforced by the key having the hash of text,
+        thus we will never lose data with overwrite
+        """
+        assert self._key
+        coll = db.collection(self._collection)
+        return coll.insert(self.__dict__, overwrite_mode="replace")
+
     # used_by = RelationshipFrom("WSTNode", 'CONTENT')
 
 class WSTNode(WST_Document):
