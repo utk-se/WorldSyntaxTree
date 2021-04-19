@@ -18,6 +18,11 @@ from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
 @concurrent.process
 def _tqdm_node_receiver(q):
+    """This is the cross-process aggregator for non-required data
+
+    Even without this process the collection and analysis should run normally.
+    It's mostly just used for debugging and informational output.
+    """
     try:
         log.debug(f"start counting db inserts...")
         n = 0
@@ -154,13 +159,12 @@ def _process_file(
 
             # text storage (deduplication)
             text_key = f"{textlength}-{sha512hex(cur_node.text.tobytes())}"
-            if text_key not in known_exists_text_ids:
+            text_id = f"{WSTText._collection}/{text_key}"
+            if text_id not in known_exists_text_ids:
                 nt = get_or_create_WSTText(text_key, textlength, text)
-                text_id = nt._id
-                known_exists_text_ids.add(text_id)
+                known_exists_text_ids.add(nt._id)
                 memoiz_stats[1] += 1
             else:
-                text_id = f"{WSTText._collection}/text_key"
                 memoiz_stats[0] += 1
             # link node -> text
             batch_writes.append(nn / text_id)
