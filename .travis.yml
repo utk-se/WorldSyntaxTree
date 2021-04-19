@@ -11,6 +11,7 @@ cache:
     - $HOME/.cache/wsyntree
 
 install:
+  - python -m pip install requests coloredlogs pygit2
   - python -m pip install -r requirements.txt
   - python setup.py install
 

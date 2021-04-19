@@ -34,7 +34,8 @@ setup(
         "tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master",
         "tqdm",
         "Pebble",
-        "filelock"
+        "filelock",
+        "cachetools",
     ],
     entry_points={
         'console_scripts': [
