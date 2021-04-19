@@ -100,6 +100,9 @@ def _process_file(
     t_start = time.time()
     t_notified = False
     cursor = tree.walk()
+    # memoization of WSTTexts
+    known_exists_text_ids = set()
+    memoiz_stats = [0, 0]
     # iteration loop
     preorder = 0
     order_to_id = {}
@@ -116,15 +119,6 @@ def _process_file(
                 )
             batch_writes.append(nt)
             return nt
-        # get_or_create_WSTText_lru = functools.lru_cache(maxsize=512)(get_or_create_WSTText)
-        get_or_create_WSTText_lfu = cachetools.func.lfu_cache(maxsize=1e2)(get_or_create_WSTText)
-        # only want to cache short / predictably repeated texts
-        def get_or_create_WSTText_cached(text_key: str, length: int, content: str):
-            # magic number: memory vs I/O delay tradeoff
-            if length < 16:
-                return get_or_create_WSTText_lfu(text_key, length, content)
-            else:
-                return get_or_create_WSTText(text_key, length, content)
 
         # definitions: nn = new node, nt = new text, nc = node count
         while cursor.node is not None:
@@ -160,9 +154,16 @@ def _process_file(
 
             # text storage (deduplication)
             text_key = f"{textlength}-{sha512hex(cur_node.text.tobytes())}"
-            nt = get_or_create_WSTText_cached(text_key, textlength, text)
+            if text_key not in known_exists_text_ids:
+                nt = get_or_create_WSTText(text_key, textlength, text)
+                text_id = nt._id
+                known_exists_text_ids.add(text_id)
+                memoiz_stats[1] += 1
+            else:
+                text_id = f"{WSTText._collection}/text_key"
+                memoiz_stats[0] += 1
             # link node -> text
-            batch_writes.append(nn / nt)
+            batch_writes.append(nn / text_id)
 
             if len(batch_writes) >= batch_write_size:
                 # log.debug(f"batch insert {len(batch_writes)}...")
@@ -201,12 +202,11 @@ def _process_file(
                     # NOTE sucessful end of processing
                     # log.debug(f"{file.path} added {preorder} nodes")
                     if node_q:
-                        cinfo = get_or_create_WSTText_lfu.cache_info()
                         node_q.put((
                             "cache_stats",
                             {
-                                "text_lfu_hit": cinfo.hits,
-                                "text_lfu_miss": cinfo.misses,
+                                "text_lfu_hit": memoiz_stats[0],
+                                "text_lfu_miss": memoiz_stats[1],
                             }
                         ))
                     return file # end process
