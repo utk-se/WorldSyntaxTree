@@ -148,6 +148,7 @@ class WSTRepository(WST_Document):
         "commit",
         "analyzed_time",
         "wst_status",
+        "wst_extra",
     ]
 
     # host = RelationshipTo(SCM_Host, 'HOSTED_ON', cardinality=One)

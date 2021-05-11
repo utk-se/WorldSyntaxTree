@@ -164,7 +164,7 @@ class WST_ArangoTreeCollector():
         log.info(f"Deleted repo {self._tree_repo.url} @ {self._tree_repo.commit}")
         self._tree_repo = None
 
-    def collect_all(self):
+    def collect_all(self, existing_node_q = None):
         """Creates every node down the tree for this repo"""
         # create the main Repos
         nr = WSTRepository(
@@ -208,8 +208,11 @@ class WST_ArangoTreeCollector():
                 self._tree_repo.update_in_db(self._db)
                 return
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
-            self._node_queue = self._mp_manager.Queue()
-            node_receiver = _tqdm_node_receiver(self._node_queue)
+            if not existing_node_q:
+                self._node_queue = self._mp_manager.Queue()
+                node_receiver = _tqdm_node_receiver(self._node_queue)
+            else:
+                self._node_queue = existing_node_q
             with ProcessPool(max_workers=self._worker_count) as executor:
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
@@ -252,9 +255,11 @@ class WST_ArangoTreeCollector():
                     self._tree_repo.update_in_db(self._db)
                     raise e
                 finally:
-                    self._node_queue.put(None)
-            self._node_queue.put(None)
-            receiver_exit = node_receiver.result(timeout=3)
+                    if not existing_node_q:
+                        self._node_queue.put(None)
+            if not existing_node_q:
+                self._node_queue.put(None)
+                receiver_exit = node_receiver.result(timeout=3)
 
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""

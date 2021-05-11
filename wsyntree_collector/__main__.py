@@ -15,6 +15,8 @@ from wsyntree.utils import strip_url, desensitize_url
 from wsyntree.tree_models import WSTRepository
 
 from .arango_collector import WST_ArangoTreeCollector
+from .batch_analyzer import set_batch_analyze_args, RepoExistsError
+
 
 def analyze(args):
     collector = WST_ArangoTreeCollector(
@@ -32,7 +34,7 @@ def analyze(args):
             log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
             return
         else:
-            raise FileExistsError(f"Repo document already exists: {repo.__dict__}")
+            raise RepoExistsError(f"Repo document already exists: {repo.__dict__}")
 
     try:
         collector.collect_all()
@@ -180,6 +182,12 @@ def __main__():
         help="Checkout and analyze a specific commit from the repo",
         default=None
     )
+    # batch analysis
+    cmd_batch = subcmds.add_parser(
+        'batch', aliases=['addbatch', 'addmulti'],
+        help="Analyze multiple repos from a JSON specification list"
+    )
+    set_batch_analyze_args(cmd_batch)
     # delete data selectively
     cmd_delete = subcmds.add_parser(
         'delete', aliases=['del'], help="Delete tree data selectively")
