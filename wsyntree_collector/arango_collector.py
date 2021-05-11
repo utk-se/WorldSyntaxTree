@@ -100,10 +100,21 @@ class WST_ArangoTreeCollector():
             )
             return git.Repository(repopath)
 
+    # @functools.cached_property
+    @property
+    def _current_commit_hash(self) -> str:
+        try:
+            return self._get_git_repo().revparse_single('HEAD').hex
+        except KeyError as e:
+            log.error(f"repo in {self._local_repo_path} might not have HEAD?")
+            raise e
+
     ### NOTE immutable properties
 
     def __repr__(self):
-        return f"WST_ArangoTreeCollector<{self.repo_url}@{self._current_commit_hash}>"
+        repo_url = str(self.repo_url)
+        hash = str(self._current_commit_hash)
+        return f"WST_ArangoTreeCollector<{repo_url}@{hash}>"
     __str__ = __repr__
 
     @functools.cached_property
@@ -113,14 +124,6 @@ class WST_ArangoTreeCollector():
             cachedir.mkdir(mode=0o770, exist_ok=True)
             log.debug(f"created dir {cachedir}")
         return cachedir.joinpath(self._url_path)
-
-    @functools.cached_property
-    def _current_commit_hash(self) -> str:
-        try:
-            return self._get_git_repo().revparse_single('HEAD').hex
-        except KeyError as e:
-            log.error(f"repo in {self._local_repo_path} might not have HEAD?")
-            raise e
 
     ### NOTE public control functions
 
@@ -177,12 +180,13 @@ class WST_ArangoTreeCollector():
         # self._coll['wstrepos'].insert(nr.__dict__)
         nr.insert_in_db(self._db)
 
+        index = self._get_git_repo().index
+        index.read()
+
         # file-level processing
         files = []
         if self._worker_count == 1:
             with pushd(self._local_repo_path):
-                index = self._get_git_repo().index
-                index.read()
                 for gobj in tqdm(index, desc="scanning git"):
                     if not os.path.isfile(gobj.path):
                         continue
@@ -210,8 +214,6 @@ class WST_ArangoTreeCollector():
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []
-                index = self._get_git_repo().index
-                index.read()
                 for gobj in tqdm(index):
                     if not os.path.isfile(gobj.path):
                         continue
@@ -257,5 +259,18 @@ class WST_ArangoTreeCollector():
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""
         self._connect_db()
-        self._get_git_repo()
-        # TODO checkout self._target_commit
+        repo = self._get_git_repo()
+        # to _target_commit if set
+        if self._target_commit and self._target_commit != self._current_commit_hash:
+            log.info(f"Checking out commit {self._target_commit}...")
+            try:
+                commit = repo.get(self._target_commit)
+                log.debug(f"target commit {commit}")
+                # commit might not exist for a variety of reasons (need to fetch, DNE, corrupt, etc)
+                repo.checkout_tree(commit.tree)
+                repo.head.set_target(commit.id)
+            except Exception as e:
+                raise
+            log.info(f"Repo at {self._local_repo_path} now at {self._current_commit_hash}")
+        elif self._target_commit and self._target_commit == self._current_commit_hash:
+            log.info(f"Repo in {self._local_repo_path} is already at {self._target_commit}")

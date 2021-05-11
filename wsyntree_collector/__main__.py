@@ -21,8 +21,10 @@ def analyze(args):
         args.repo_url,
         workers=args.workers,
         database_conn=args.db,
+        commit_sha=args.target_commit,
     )
     collector.setup()
+    log.debug(f"Set up collector: {collector}")
 
     # check if exists already
     if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
@@ -171,6 +173,12 @@ def __main__():
         "--skip-exists", "--skip-existing",
         action="store_true",
         help="Skip the analysis if the repo document already exists in the database"
+    )
+    cmd_analyze.add_argument(
+        "-t", "--target-commit",
+        type=str,
+        help="Checkout and analyze a specific commit from the repo",
+        default=None
     )
     # delete data selectively
     cmd_delete = subcmds.add_parser(
