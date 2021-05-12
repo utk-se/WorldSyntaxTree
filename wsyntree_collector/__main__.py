@@ -8,6 +8,7 @@ import time
 
 import pygit2 as git
 from arango import ArangoClient
+import enlighten
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
@@ -151,6 +152,9 @@ def __main__():
         "-v", "--verbose",
         help="Increase output verbosity",
         action="store_true"
+    )
+    parser.set_defaults(
+        en_manager=enlighten.get_manager()
     )
     subcmds = parser.add_subparsers(
         title="Collector commands"

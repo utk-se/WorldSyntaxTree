@@ -7,7 +7,7 @@ from contextlib import nullcontext
 import functools
 
 from arango import ArangoClient
-from tqdm import tqdm
+import enlighten
 from pebble import concurrent
 import cachetools.func
 
@@ -17,7 +17,7 @@ from wsyntree.tree_models import * # __all__
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
 
 @concurrent.process
-def _tqdm_node_receiver(q):
+def _tqdm_node_receiver(q, en_manager):
     """This is the cross-process aggregator for non-required data
 
     Even without this process the collection and analysis should run normally.
@@ -30,16 +30,19 @@ def _tqdm_node_receiver(q):
             "text_lfu_hit": 0,
             "text_lfu_miss": 0,
         }
-        with tqdm(desc="writing documents to db", position=1, unit='docs', unit_scale=True) as tbar:
-            while (nc := q.get()) is not None:
-                if type(nc) == int:
-                    n += nc
-                    tbar.update(nc)
-                elif nc[0] == "cache_stats":
-                    for k, v in nc[1].items():
-                        cache_stats[k] += v
-                else:
-                    log.error(f"node receiver process got invalid data sent of type {type(nc)}")
+        cntr = en_manager.counter(
+            desc="writing to db", position=1, unit='docs',
+        )
+        # with tqdm(desc="writing documents to db", position=1, unit='docs', unit_scale=True) as tbar:
+        while (nc := q.get()) is not None:
+            if type(nc) == int:
+                n += nc
+                cntr.update(nc)
+            elif nc[0] == "cache_stats":
+                for k, v in nc[1].items():
+                    cache_stats[k] += v
+            else:
+                log.error(f"node receiver process got invalid data sent of type {type(nc)}")
         log.info(f"stopped counting nodes, total documents inserted: {n}")
         cache_text_lfu_ratio = cache_stats["text_lfu_hit"] / (cache_stats["text_lfu_miss"] or 1)
         log.debug(f"text_lfu cache stats: ratio {cache_text_lfu_ratio}, hit {cache_stats['text_lfu_hit']}")
@@ -67,6 +70,7 @@ def _process_file(
         database_conn_str: str,
         *,
         node_q = None,
+        en_manager = None,
         batch_write_size=1000,
     ):
     """Runs one file's analysis from a repo.

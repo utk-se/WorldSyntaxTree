@@ -11,8 +11,8 @@ import time
 
 from arango import ArangoClient
 import pygit2 as git
-from tqdm import tqdm
 from pebble import ProcessPool, ThreadPool
+import enlighten
 
 from wsyntree import log, tree_models
 from wsyntree.tree_models import * # __all__
@@ -31,12 +31,16 @@ class WST_ArangoTreeCollector():
             database_conn: str = "http://wst:wst@localhost:8529/wst",
             workers: int = None,
             commit_sha: str = None,
+            en_manager = None,
         ):
         """
         database_conn: Full URI including user:password@host:port/database
+        commit_sha: full sha1 hex commit, optional, if present will checkout
+        workers: number of file processes in parallel
         """
         self.repo_url = repo_url
         self.database_conn_str = database_conn
+        self.en_manager = en_manager or enlighten.get_manager()
 
         pr = urlparse(self.repo_url)
         self._url_scheme = pr.scheme
@@ -185,28 +189,36 @@ class WST_ArangoTreeCollector():
 
         # file-level processing
         files = []
-        if self._worker_count == 1:
-            with pushd(self._local_repo_path):
-                for gobj in tqdm(index, desc="scanning git"):
-                    if not os.path.isfile(gobj.path):
-                        continue
-                    nf = WSTFile(
-                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
-                        path=gobj.path,
-                        oid=gobj.hex,
-                    )
-                    files.append(nf)
-                log.info(f"{len(files)} to process")
-                for file in files:
-                    try:
-                        r = process_file(file, self._tree_repo, self.database_conn_str)
-                        log.debug(f"{file.path} processing done: {r}")
-                    except Exception as e:
-                        log.err(f"during {file.path}, document {file._key}")
-                        raise e
-                self._tree_repo.wst_status = "completed"
-                self._tree_repo.update_in_db(self._db)
-                return
+        # if self._worker_count == 1:
+        #     with pushd(self._local_repo_path):
+        #         cntr = self.en_manager.counter(
+        #             desc="scanning git", total=len(index), leave=False
+        #         )
+        #         for gobj in index:
+        #             if not os.path.isfile(gobj.path):
+        #                 continue
+        #             nf = WSTFile(
+        #                 _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
+        #                 path=gobj.path,
+        #                 oid=gobj.hex,
+        #             )
+        #             files.append(nf)
+        #             cntr.update()
+        #         cntr.close()
+        #         log.info(f"{len(files)} to process")
+        #         cntr = self.en_manager.counter(
+        #             desc=""
+        #         )
+        #         for file in files:
+        #             try:
+        #                 r = process_file(file, self._tree_repo, self.database_conn_str)
+        #                 log.debug(f"{file.path} processing done: {r}")
+        #             except Exception as e:
+        #                 log.err(f"during {file.path}, document {file._key}")
+        #                 raise e
+        #         self._tree_repo.wst_status = "completed"
+        #         self._tree_repo.update_in_db(self._db)
+        #         return
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
             if not existing_node_q:
                 self._node_queue = self._mp_manager.Queue()
@@ -217,7 +229,10 @@ class WST_ArangoTreeCollector():
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []
-                for gobj in tqdm(index):
+                cntr_add_jobs = self.en_manager.counter(
+                    desc=f"scanning {self._url_path}", total=len(index),
+                )
+                for gobj in index:
                     if not os.path.isfile(gobj.path):
                         continue
                     nf = WSTFile(
@@ -229,14 +244,22 @@ class WST_ArangoTreeCollector():
                     ret_futures.append(executor.schedule(
                         process_file,
                         (nf, self._tree_repo, self.database_conn_str),
-                        {'node_q': self._node_queue}
+                        {'node_q': self._node_queue, 'en_manager': self.en_manager}
                     ))
+                    cntr_add_jobs.update()
+                cntr_add_jobs.close()
                 log.info(f"processing files with {self._worker_count} workers ...")
                 try:
-                    for r in tqdm(futures.as_completed(ret_futures), total=len(ret_futures), desc="processing files"):
+                    cntr_files_processed = self.en_manager.counter(
+                        desc=f"processing {self._url_path}",
+                        total=len(ret_futures), unit="files",
+                        leave=False,
+                    )
+                    for r in futures.as_completed(ret_futures):
                         nf = r.result()
                         # s = str(nf)
                         # log.debug(f"result {nf}")
+                        cntr_files_processed.update()
                     # after all results returned
                     self._tree_repo.wst_status = "completed"
                     self._tree_repo.update_in_db(self._db)
@@ -255,6 +278,7 @@ class WST_ArangoTreeCollector():
                     self._tree_repo.update_in_db(self._db)
                     raise e
                 finally:
+                    cntr_files_processed.close()
                     if not existing_node_q:
                         self._node_queue.put(None)
             if not existing_node_q:

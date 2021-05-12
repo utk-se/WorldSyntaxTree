@@ -36,6 +36,7 @@ setup(
         "Pebble",
         "filelock",
         "cachetools",
+        "enlighten",
     ],
     entry_points={
         'console_scripts': [
