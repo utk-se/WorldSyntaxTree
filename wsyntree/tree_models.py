@@ -39,7 +39,7 @@ class WST_Document():
                 setattr(self, k, v)
             except AttributeError as e:
                 if k == "_id":
-                    # attr is @parameter / automatic
+                    # attr is @property / automatic
                     continue
                     # log.debug(f"ignore {k} = {v}")
 
