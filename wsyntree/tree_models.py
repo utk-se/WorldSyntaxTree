@@ -29,11 +29,7 @@ class WST_Document():
         Returns None if document by key does not exist.
         """
         collection = db.collection(cls._collection)
-        try:
-            document = collection.get(key)
-        except Exception as e:
-            log.err(f"collection({cls._collection}).get({key}) failed")
-            raise
+        document = collection.get(key)
         return cls(**document) if document is not None else None
 
     def __init__(self, *args, **kwargs):
