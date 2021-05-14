@@ -11,7 +11,7 @@ from arango import ArangoClient
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
-from wsyntree.utils import strip_url
+from wsyntree.utils import strip_url, desensitize_url
 from wsyntree.tree_models import WSTRepository
 
 from .arango_collector import WST_ArangoTreeCollector
@@ -105,8 +105,8 @@ def database_init(args):
                 log.debug(f"delete: waiting on {len(jobs)} jobs to finish ...")
                 jt_wait = len(jobs)
 
-        # back to non-async
-        db = odb
+    # back to non-async
+    db = odb
 
     log.info(f"Creating collections ...")
 
@@ -198,6 +198,8 @@ def __main__():
     if args.verbose:
         log.setLevel(log.DEBUG)
         log.debug("Verbose logging enabled.")
+
+    log.info(f"DB connection: {desensitize_url(args.db)}")
 
     if 'func' not in args:
         log.warn(f"Please supply a valid subcommand!")

@@ -17,7 +17,9 @@ from pebble import ProcessPool, ThreadPool
 from wsyntree import log, tree_models
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
-from wsyntree.utils import list_all_git_files, pushd, strip_url, sha1hex, chunkiter
+from wsyntree.utils import (
+    list_all_git_files, pushd, strip_url, sha1hex, chunkiter
+)
 from .arango_collector_worker import _tqdm_node_receiver, process_file
 
 
@@ -138,6 +140,8 @@ class WST_ArangoTreeCollector():
             log.info(f"Repo status {self._tree_repo.wst_status} -> deleting")
             self._tree_repo.wst_status = "deleting"
             self._tree_repo.update_in_db(self._db)
+        else:
+            log.info(f"Resuming deletion ...")
 
         nodechunksize = 1000
         files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
@@ -248,6 +252,7 @@ class WST_ArangoTreeCollector():
                 finally:
                     self._node_queue.put(None)
             self._node_queue.put(None)
+            receiver_exit = node_receiver.result(timeout=3)
 
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""

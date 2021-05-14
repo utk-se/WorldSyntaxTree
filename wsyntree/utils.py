@@ -67,9 +67,16 @@ def chunkiter(seq, size):
     while chunk := tuple(itertools.islice(it, size)):
         yield chunk
 
-def strip_url(u):
+def strip_url(u: str):
     p = urlparse(u)
     return f"{p.scheme}://{p.hostname}:{p.port}"
 
+def desensitize_url(u: str):
+    p = urlparse(u)
+    return f"{p.scheme}://{p.username}@{p.hostname}:{p.port}{p.path}"
+
 def sha1hex(s: str) -> str:
     return hashlib.sha1(s.encode()).hexdigest()
+
+def sha512hex(b: bytes) -> str:
+    return hashlib.sha512(b).hexdigest()
