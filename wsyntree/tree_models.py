@@ -20,7 +20,6 @@ class WST_Document():
         "__collection",
         "_key",
     ]
-    _edge_to = None
 
     @classmethod
     def get(cls, db, key):
@@ -76,24 +75,35 @@ class WST_Document():
             "_id": self._id,
         }
 
+    def _genkey(self):
+        if not hasattr(self, '_keyfmt') or not self._keyfmt:
+            raise ValueError(f"instance of {type(self)} does not have _keyfmt specified, cannot automatically determine _key")
+        self._key = self._keyfmt.format(self)
+        return self._key
+
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
         """Insert this document into a db"""
-        assert self._key
+        if not self._key:
+            self._genkey()
         coll = db.collection(self._collection)
         return coll.insert(self.__dict__)
 
     def update_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
-        assert self._key
+        assert self._key, '_key must already be set in order to update the document'
         coll = db.collection(self._collection)
         return coll.update(self.__dict__)
 
     def _make_edge(self, rhs):
+        """
+        {WST_Document A} / {WST_Document B}
+        creates an edge document FROM A TO B
+        """
         return WST_Edge(self, rhs)
     __floordiv__ = _make_edge
     __truediv__ = _make_edge
 
 class WST_Edge(dict):
-    # These slots are NOT part of the inserted document
+    # These slots are NOT part of the inserted document in Arango
     __slots__ = [
         "_w_from",
         "_w_to",
@@ -107,13 +117,13 @@ class WST_Edge(dict):
                 raise ValueError(f"when `to` is string: must be fully qualified document ID: invalid ID '{to}'")
             coll, key = to.split('/')
             if coll not in nfrom._edge_to.keys():
-                raise TypeError(f"type {type(nfrom)} cannot connect to document ID {to}")
+                raise TypeError(f"cannot connect type {type(nfrom)} to a document of type {type(to)}, edge collection from {nfrom._collection} to {coll} not set")
             self._w_to = WST_Document(
                 _collection=coll,
                 _key=key,
             )
         elif isinstance(to, WST_Document) and to._collection not in nfrom._edge_to:
-            raise TypeError(f"type {type(nfrom)} cannot connect to type {type(to)}")
+            raise TypeError(f"cannot connect type {type(nfrom)} to type {type(to)}, no edge collection set for these types")
         elif isinstance(to, WST_Document):
             self._w_to = to
         self._w_collection = nfrom._edge_to[self._w_to._collection]
@@ -124,52 +134,20 @@ class WST_Edge(dict):
         self["_to"] = self._w_to._id
 
     def insert_in_db(self, db):
+        """Uses the graph API!"""
         graph = db.graph(_graph_name)
         edges = graph.edge_collection(self._w_collection)
         edges.insert(self)
 
-# class WST_Serializer(JSONEncoder):
-#     def default(self, o):
-#         if isinstance(o, WST_Document):
-#             return o.__dict__
-#         else:
-#             return JSONEncoder.default(self, o)
-
-class WSTRepository(WST_Document):
-    _collection = "wstrepos"
-    __slots__ = [
-        "type",
-        "url",
-        "path",
-        "commit",
-        "analyzed_time",
-        "wst_status",
-        "wst_extra",
-    ]
-
-    # host = RelationshipTo(SCM_Host, 'HOSTED_ON', cardinality=One)
-
-    # files = RelationshipFrom("WSTFile", 'IN_REPO')
-
-class WSTFile(WST_Document):
-    _collection = "wstfiles"
-    _edge_to = {
-        WSTRepository._collection: "wst-fromrepo",
-    }
-    __slots__ = [
-        "path",
-        "language",
-        "error",
-        "oid",
-    ]
-
-    # wstnodes = RelationshipFrom("WSTNode", 'IN_FILE')
+### DOCUMENT TYPES
 
 class WSTText(WST_Document):
-    _collection = "wsttexts"
+    _collection = "wst_texts"
+    _keyfmt = "{0.length}-{0.content_hash}"
     __slots__ = [
         "length",
         "text",
+        "content_hash", # 128 hex chars
     ]
 
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
@@ -183,14 +161,15 @@ class WSTText(WST_Document):
         coll = db.collection(self._collection)
         return coll.insert(self.__dict__, overwrite_mode="replace")
 
-    # used_by = RelationshipFrom("WSTNode", 'CONTENT')
-
 class WSTNode(WST_Document):
-    _collection = "wstnodes"
+    """A single node in the Abstract or Concrete syntax tree
+
+    Basically copies the data structure from tree-sitter
+    """
+    _collection = "wst_nodes"
     _edge_to = {
-        WSTFile._collection: "wst-fromfile",
-        WSTText._collection: "wst-nodetext",
-        _collection: "wst-nodeparent",
+        WSTText._collection: "wst-node-text", # singular
+        _collection: "wst-node-parent", # singular, own-kind
     }
     __slots__ = [
         # x: line, y: character (2d coords begin->end)
@@ -208,8 +187,82 @@ class WSTNode(WST_Document):
         "type",
     ]
 
-    # file =   RelationshipTo(WSTFile, 'IN_FILE', cardinality=One)
-    # parent = RelationshipTo("WSTNode", 'PARENT', cardinality=One)
-    # text =   RelationshipTo(WSTText, 'CONTENT', cardinality=One)
+class WSTCodeTree(WST_Document):
+    """A code tree is a parsed syntax tree"""
+    _collection = "wst_codetrees"
+    _keyfmt = "{0.language}-{0.content_hash}"
+    _edge_to = {
+        WSTNode._collection: "wst-codetree-root-node", # singular
+    }
+    __slots__ = [
+        "language",
+        "lang_version", # probably the commit of tree-sitter language lib used
+        "content_hash", # 128 hex chars
+        "git_oid", # object ID from git
 
-    # children = RelationshipFrom("WSTNode", 'PARENT')
+        # set when we could not generate all WSTNodes
+        "error",
+    ]
+
+class WSTFile(WST_Document):
+    _collection = "wst_files"
+    _edge_to = {
+        WSTCodeTree._collection: "wst-file-codetree", # singular
+        # WSTText._collection: "wst-file-text", # probably unneeded
+    }
+    __slots__ = [
+        "path",
+        "mode",
+
+        # so that we can build _key / _id to a CodeTree without a lookup,
+        # this needs to match WSTCodeTree.content_hash
+        "content_hash",
+    ]
+
+class WSTCommit(WST_Document):
+    _collection = "wst_commits"
+    _edge_to = {
+        # edges pointing to all files present with this commit checked out
+        WSTFile._collection: "wst-commit-files", # multi
+    }
+    __slots__ = [
+        "commitmsg",
+        "git_timestamp", # when commit was made according to git
+    ]
+
+class WSTRepository(WST_Document):
+    _collection = "wst_repos"
+    _edge_to = {
+        WSTCommit._collection: "wst-repo-commit", # singular
+        _collection: "wst-repo-forkedfrom", # singular, own-kind
+    }
+    __slots__ = [
+        "type", # =git
+        "url", # same URL used to clone
+        "status", # repo might be 'archived' or something else
+        "path",
+        "analyzed_time", # WST run timestamp
+        "wst_status",
+        "wst_extra", # the repo dict as it was in the batch input document
+    ]
+
+    def _genkey(self):
+        self._key = f"{shake256hex(self.url)}"
+        return self._key
+
+# autogenerate names for the database:
+_db_collections = []
+_db_edgecollections = []
+
+for localname, value in dict(globals()).items():
+    if localname.startswith('WST'):
+        if hasattr(value, '_collection') and issubclass(value, WST_Document):
+            if isinstance(value._collection, str):
+                _db_collections.append(value._collection)
+            if hasattr(value, '_edge_to'):
+                for targettype, edgecollname in value._edge_to.items():
+                    _db_edgecollections.append(edgecollname)
+
+if __name__ == '__main__':
+    log.info(f"Collections: {_db_collections}")
+    log.info(f"Edge Collections: {_db_edgecollections}")
