@@ -1,3 +1,8 @@
+"""
+just for testing the multiprogress Enlighten wrapper, run directly:
+
+python tests/enlighten/idea.py -v
+"""
 
 import time
 import os
@@ -13,54 +18,17 @@ import enlighten
 from enlighten import _manager, Counter
 
 from wsyntree import log
+from wsyntree import multiprogress
 
-
-class EnlightenMultiprocessManager(SyncManager):
-    pass
-
-main_proc_en_manager = enlighten.get_manager()
-
-def create_counter(**kwargs):
-    return main_proc_en_manager.counter(**kwargs)
-EnlightenMultiprocessManager.register(
-    'CreateCounter',
-    create_counter
-)
-class CounterGenerator():
-    def __init__(self, conn_queue):
-        self.conn_queue = conn_queue
-    def __call__(self, **kwargs):
-        requester, giver = Pipe()
-        self.conn_queue.put(giver)
-        requester.send(kwargs)
-        new_c = requester.recv()
-        requester.close()
-        log.debug(f"a CounterGenerator instance received: {repr(new_c)}")
-        return new_c
-
-@concurrent.thread
-def counter_giver(counter_creation_func, conn_queue):
-    """
-    counter_creation_func: EnlightenMultiprocessManager.CreateCounter(**kwargs)
-
-    this function sends Counter Proxies over connections added to the queue
-    """
-    log.debug(f"counter_giver up and running!")
-    while (conn := conn_queue.get()) is not None:
-        log.debug(f"counter_giver making a new counter!")
-        new_c = counter_creation_func(**conn.recv())
-        log.debug(f"counter_giver giving: {repr(new_c)}")
-        conn.send(new_c)
-        conn.close()
 
 # @concurrent.process
-def slow_worker(name, orig_jobitems, itemtime, counter_proxy_generator_proxy):
+def slow_worker(name, orig_jobitems, itemtime, en_manager):
     """I WANT:
     A function I can call to retrieve a proxy for a counter
     """
     jobitems = random.randrange(orig_jobitems//2, orig_jobitems*2)
     try:
-        cntr = counter_proxy_generator_proxy(
+        cntr = en_manager.counter(
             desc=f"job {name}", total=jobitems, leave=False
         )
     except Exception as e:
@@ -117,36 +85,28 @@ def __main__():
         log.debug("Verbose logging enabled.")
 
     with ProcessPool(max_workers=args.nworkers) as executor:
+        multiprogress.main_proc_setup()
+        multiprogress.start_server_thread()
 
-        # Setting up the server to run in a thread in this process
-        mp_manager = EnlightenMultiprocessManager()
-        mp_manager_server = mp_manager.get_server()
-        mp_manager_server_thread = threading.Thread(target=mp_manager_server.serve_forever)
-        mp_manager_server_thread.daemon = True
-        mp_manager_server_thread.start()
-        # slightly a hack:
-        mp_manager._address = mp_manager_server.address
-        mp_manager._state.value = State.STARTED
-
-        counter_generator_queue = mp_manager.Queue()
-        counter_generator = CounterGenerator(counter_generator_queue)
-        counter_giver(mp_manager.CreateCounter, counter_generator_queue)
+        en_manager_proxy = multiprogress.get_manager_proxy()
+        en_manager = multiprogress.get_manager()
 
         ret_futures = []
-        log.debug(f"counter_generator: {repr(counter_generator)}")
+        # log.debug(f"counter_generator: {repr(counter_generator)}")
         log.info(f"Starting jobs...")
         for i in range(args.njobs):
             ret_futures.append(executor.schedule(
                 slow_worker,
-                (i, args.jobitems, args.itemtime, counter_generator)
+                (i, args.jobitems, args.itemtime, en_manager_proxy)
             ))
         log.info(f"Waiting for jobs to complete...")
-        cntr_all_jobs = main_proc_en_manager.counter(
+        cntr_all_jobs = en_manager.counter(
             desc="all jobs", total=args.njobs, color='blue'
         )
         log.debug(f"cntr_all_jobs: {repr(cntr_all_jobs)}")
         for f in futures.as_completed(ret_futures):
             f.result()
+            log.debug(f"finished a job!")
             cntr_all_jobs.update()
         log.info(f"All jobs completed!")
 
