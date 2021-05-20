@@ -9,7 +9,8 @@ from . import log
 from .utils import dotdict
 
 __all__ = [
-    'WSTRepository', 'WSTFile', 'WSTNode', 'WSTText'
+    'WSTRepository', 'WSTCommit', 'WSTFile',
+    'WSTCodeTree', 'WSTNode', 'WSTText',
 ]
 
 _graph_name = 'wst'
@@ -143,12 +144,15 @@ class WST_Edge(dict):
 
 class WSTText(WST_Document):
     _collection = "wst_texts"
-    _keyfmt = "{0.length}-{0.content_hash}"
     __slots__ = [
         "length",
         "text",
-        "content_hash", # 128 hex chars
+        # "content_hash", # 128 hex chars
     ]
+
+    def _genkey(self):
+        self._key = f"{self.length}-{shake256hex(self.text.encode(), 64)}"
+        return self._key
 
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
         """WSTTexts might be duplicate
@@ -204,6 +208,10 @@ class WSTCodeTree(WST_Document):
         "error",
     ]
 
+    def _genkey(self):
+        self._key = f"{self.language}-{self.content_hash}"
+        return self._key
+
 class WSTFile(WST_Document):
     _collection = "wst_files"
     _edge_to = {
@@ -216,8 +224,11 @@ class WSTFile(WST_Document):
 
         # so that we can build _key / _id to a CodeTree without a lookup,
         # this needs to match WSTCodeTree.content_hash
-        "content_hash",
+        "content_hash", # 128 hex chars
     ]
+
+    def _genkey(self):
+        self._key = f"{shake_256(self.path, 32)}-{self.content_hash}"
 
 class WSTCommit(WST_Document):
     _collection = "wst_commits"
@@ -247,14 +258,14 @@ class WSTRepository(WST_Document):
     ]
 
     def _genkey(self):
-        self._key = f"{shake256hex(self.url)}"
+        self._key = f"{shake256hex(self.url, 64)}"
         return self._key
 
 # autogenerate names for the database:
 _db_collections = []
 _db_edgecollections = []
 
-for localname, value in dict(globals()).items():
+for localname, value in dict(locals()).items():
     if localname.startswith('WST'):
         if hasattr(value, '_collection') and issubclass(value, WST_Document):
             if isinstance(value._collection, str):
