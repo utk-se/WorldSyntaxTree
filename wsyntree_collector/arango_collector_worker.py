@@ -123,7 +123,7 @@ def _process_file(
     # checking if file has been modified on disk vs git:
     if file_git_sha1.hexdigest() != file.git_oid:
         # we will NOT insert this file into the db if this happens
-        log.warn(f"{file.path} content sha1 is {file_git_sha1.hexdigest()} while oid is {file.git_oid}")
+        log.warn(f"{file.path} gitlike sha1 is {file_git_sha1.hexdigest()} while oid is {file.git_oid}")
         log.warn(f"{file.path} mode is {file.mode}")
         raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
     file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
