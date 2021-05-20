@@ -103,6 +103,11 @@ class WST_Document():
     __floordiv__ = _make_edge
     __truediv__ = _make_edge
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.__dict__ == other.__dict__
+
     def __repr__(self) -> str:
         return f"{type(self)}({self.__dict__})"
     __str__ = __repr__
@@ -134,7 +139,8 @@ class WST_Edge(dict):
         self._w_collection = nfrom._edge_to[self._w_to._collection]
         self._w_from = nfrom
 
-        self["_key"] = f"{self._w_from._key}+{self._w_to._key}"
+        # hash the keys because each vert's key could be >= half the max key size
+        self["_key"] = shake256hex(f"{self._w_from._key}+{self._w_to._key}", 64)
         self["_from"] = self._w_from._id
         self["_to"] = self._w_to._id
 
@@ -206,9 +212,10 @@ class WSTCodeTree(WST_Document):
         WSTNode._collection: "wst-codetree-root-node", # singular
     }
     __slots__ = [
-        "language",
+        "language", # WST lang id
         "lang_version", # probably the commit of tree-sitter language lib used
         "content_hash", # 128 hex chars
+        "git_oid",
 
         # set when we could not generate all WSTNodes
         "error", # any reason the CodeTree may not be accurate or complete
@@ -222,6 +229,7 @@ class WSTFile(WST_Document):
     }
     __slots__ = [
         "path", # path as stored in git / relative to workdir
+        "language", # WST lang id, could be calculated from path
         "mode", # git mode, not unix perms, but still octal
         "size", # in bytes
         "git_oid", # object ID from git
@@ -233,7 +241,7 @@ class WSTFile(WST_Document):
     ]
 
     def _genkey(self):
-        self._key = f"{shake_256(self.path, 32)}-{self.content_hash}"
+        self._key = f"{shake256hex(self.path, 32)}-{self.content_hash}"
         return self._key
 
 class WSTCommit(WST_Document):

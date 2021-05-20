@@ -14,7 +14,7 @@ import pygit2 as git
 from pebble import ProcessPool, ThreadPool
 import enlighten
 
-from wsyntree import log, tree_models
+from wsyntree import log, tree_models, multiprogress
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import (
@@ -40,7 +40,13 @@ class WST_ArangoTreeCollector():
         """
         self.repo_url = repo_url
         self.database_conn_str = database_conn
-        self.en_manager = en_manager or enlighten.get_manager()
+
+        multiprogress.setup_if_needed()
+        self.en_manager = en_manager or multiprogress.get_manager()
+        if multiprogress.is_proxy(en_manager):
+            self.en_manager_proxy = en_manager
+        else:
+            self.en_manager_proxy = multiprogress.get_manager_proxy()
 
         pr = urlparse(self.repo_url)
         self._url_scheme = pr.scheme
@@ -211,7 +217,7 @@ class WST_ArangoTreeCollector():
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
             if not existing_node_q:
                 self._node_queue = self._mp_manager.Queue()
-                node_receiver = _tqdm_node_receiver(self._node_queue)
+                node_receiver = _tqdm_node_receiver(self._node_queue, self.en_manager_proxy)
             else:
                 self._node_queue = existing_node_q
             with ProcessPool(max_workers=self._worker_count) as executor:
@@ -239,7 +245,7 @@ class WST_ArangoTreeCollector():
                     ret_futures.append(executor.schedule(
                         process_file,
                         (nf, self._wst_commit, self.database_conn_str),
-                        {'node_q': self._node_queue, 'en_manager': self.en_manager}
+                        {'node_q': self._node_queue, 'en_manager': self.en_manager_proxy}
                     ))
                     cntr_add_jobs.update()
                 cntr_add_jobs.close()

@@ -1,4 +1,5 @@
 
+import multiprocessing
 from multiprocessing import Pipe
 from multiprocessing.managers import BaseManager, SyncManager, State
 from multiprocessing.connection import Connection
@@ -112,10 +113,26 @@ def start_server_thread():
     global _en_manager_proxy
     _en_manager_proxy = EnlightenManagerProxy(_req_queue)
 
+def setup_if_needed() -> bool:
+    """returns True if the setup was performed"""
+    if _proxy_generator_thread is not None:
+        return False
+    if multiprocessing.parent_process() == None:
+        main_proc_setup()
+        start_server_thread()
+        return True
+    return False
+
+def is_proxy(thing):
+    return isinstance(thing, EnlightenManagerProxy)
 
 def get_manager():
-    """only use this in the main process"""
-    return _main_proc_en_manager
+    if multiprocessing.parent_process() == None:
+        return _main_proc_en_manager
+    else:
+        if _en_manager_proxy:
+            return _en_manager_proxy
+        raise RuntimeError(f"was the Enlighten Manager constructed already?")
 
 def get_manager_proxy():
     if not _mp_manager:

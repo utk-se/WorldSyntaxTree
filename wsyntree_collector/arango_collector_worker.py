@@ -7,6 +7,7 @@ from contextlib import nullcontext
 import functools
 import hashlib
 
+import arango.exceptions
 from arango import ArangoClient
 import enlighten
 from pebble import concurrent
@@ -35,6 +36,7 @@ def _tqdm_node_receiver(q, en_manager):
             "text_lfu_hit": 0,
             "text_lfu_miss": 0,
         }
+        dedup_stats = {}
         cntr = en_manager.counter(
             desc="writing to db", position=1, unit='docs',
         )
@@ -46,6 +48,10 @@ def _tqdm_node_receiver(q, en_manager):
             elif nc[0] == "cache_stats":
                 for k, v in nc[1].items():
                     cache_stats[k] += v
+            elif nc[0] == "dedup_stats":
+                if nc[1] not in dedup_stats:
+                    dedup_stats[nc[1]] = 0
+                dedup_stats[nc[1]] += nc[2]
             else:
                 log.error(f"node receiver process got invalid data sent of type {type(nc)}")
         log.info(f"stopped counting nodes, total documents inserted: {n}")
@@ -106,14 +112,19 @@ def _process_file(
 
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
-    file_sha1 = hashlib.sha1() # git oid hashes
+    file_git_sha1 = hashlib.sha1() # git oid hashes
+    file_git_sha1.update(b'blob ') # begin with the git object header info
+    file_git_sha1.update(str(file.size).encode())
+    file_git_sha1.update(b'\x00')
     with open(file.path, 'rb') as f:
         while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
             file_shake_256.update(data)
-            file_sha1.update(data)
+            file_git_sha1.update(data)
     # checking if file has been modified on disk vs git:
-    if file_sha1.hexdigest() != file.git_oid:
+    if file_git_sha1.hexdigest() != file.git_oid:
         # we will NOT insert this file into the db if this happens
+        log.warn(f"{file.path} content sha1 is {file_git_sha1.hexdigest()} while oid is {file.git_oid}")
+        log.warn(f"{file.path} mode is {file.mode}")
         raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
     file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
 
@@ -128,11 +139,13 @@ def _process_file(
         if e.http_code == 409:
             # already exists: get it
             preexisting_file = WSTFile.get(db, file._key)
-            if preexisting_file.error != file.error:
+            if preexisting_file.error != file.error or preexisting_file.git_oid != file.git_oid:
                 log.debug(f"existing file: {preexisting_file}")
                 log.debug(f"new file: {file}")
-                raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has an unexpected error status of {preexisting_file.error}")
+                raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has mismatched data")
             (wst_commit / preexisting_file).insert_in_db(db)
+            if node_q:
+                node_q.put(('dedup_stats', 'WSTFile', 1))
             return preexisting_file
         else:
             raise e
@@ -144,9 +157,32 @@ def _process_file(
         # no WSTCodeTree will be generated
         return file
 
+    # otherwise, let the parsing begin!
+    code_tree = WSTCodeTree(
+        language=file.language,
+        lang_version=None, # TODO
+        content_hash=file.content_hash,
+        git_oid=file.git_oid,
+        error=None,
+    )
+    try:
+        code_tree.insert_in_db(db)
+    except arango.exceptions.DocumentInsertError as e:
+        if e.http_code == 409:
+            # already exists: check that it's the same, and if so, all done here
+            preexisting_ct = WSTCodeTree.get(db, code_tree._key)
+            assert preexisting_ct == code_tree, f"constructed WSTCodeTree does not match existing, id {preexisting_ct._id}"
+            (file / preexisting_ct).insert_in_db(db)
+            if node_q:
+                node_q.put(('dedup_stats', 'WSTCodeTree', 1))
+            return file
+    except Exception as e:
+        log.error(f"Failed to insert WSTCodeTree into db: {code_tree}")
+        raise e
+    (file / code_tree).insert_in_db(db)
+
     tree = lang.parse_file(file.path)
 
-    # log.debug(f"growing nodes for {file.path}")
     t_start = time.time()
     t_notified = False
     cursor = tree.walk()
@@ -174,7 +210,7 @@ def _process_file(
         while cursor.node is not None:
             cur_node = cursor.node
             nn = WSTNode(
-                _key=f"{tree_repo.commit}-{file.oid}-{sha1hex(file.path)}-{preorder}",
+                _key=f"{code_tree._key}-{preorder}",
                 named=cur_node.is_named,
                 type=cur_node.type,
                 preorder=preorder,
@@ -189,30 +225,33 @@ def _process_file(
                 textlength = len(text)
             except UnicodeDecodeError as e:
                 log.warn(f"{file}: failed to decode content")
-                file.error = "UnicodeDecodeError"
-                file.update_in_db(db)
+                code_tree.error = "UnicodeDecodeError"
+                code_tree.update_in_db(db)
                 return file # ends process
 
             # nn.insert_in_db(bdb)
             batch_writes.append(nn)
             order_to_id[nn.preorder] = nn._id
             # edge_fromfile.insert(nn / file)
-            batch_writes.append(nn / file)
+            # batch_writes.append(nn / file)
             if parentorder is not None:
                 # edge_nodeparent.insert(nn / order_to_id[parentorder])
                 batch_writes.append(nn / order_to_id[parentorder])
 
             # text storage (deduplication)
-            text_key = f"{textlength}-{sha512hex(cur_node.text.tobytes())}"
-            text_id = f"{WSTText._collection}/{text_key}"
-            if text_id not in known_exists_text_ids:
-                nt = get_or_create_WSTText(text_key, textlength, text)
+            nt = WSTText(
+                length=textlength,
+                text=text,
+            )
+            nt._genkey()
+            if nt._id not in known_exists_text_ids:
+                batch_writes.append(nt)
                 known_exists_text_ids.add(nt._id)
                 memoiz_stats[1] += 1
             else:
                 memoiz_stats[0] += 1
             # link node -> text
-            batch_writes.append(nn / text_id)
+            batch_writes.append(nn / nt)
 
             if len(batch_writes) >= batch_write_size:
                 # log.debug(f"batch insert {len(batch_writes)}...")
@@ -260,9 +299,9 @@ def _process_file(
                         ))
                     return file # end process
     except Exception as e:
-        file.error = str(e)
-        file.update_in_db(db)
-        log.err(f"hmm: {e}")
+        code_tree.error = str(e)
+        code_tree.update_in_db(db)
+        log.err(f"WSTNode generation failed: {e}")
         raise e
     # finally:
     #     log.info(f"file {file.path} done")
