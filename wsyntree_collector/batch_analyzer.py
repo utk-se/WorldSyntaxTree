@@ -105,22 +105,29 @@ def batch_analyze(args):
     log.debug(f"checking {len(repolist)} items in repo list")
 
     with ProcessPool(max_workers=args.jobs) as executor:
+        multiprogress.main_proc_setup()
+        multiprogress.start_server_thread()
+
+        en_manager_proxy = multiprogress.get_manager_proxy()
+        en_manager = multiprogress.get_manager()
+
         ret_futures = []
-        for repo in tqdm(repolist, desc="creating jobs", position=2, unit='repos', unit_scale=True):
+        all_repos_sched_cntr = en_manager.counter(
+            desc="adding repo jobs", total=len(repolist), unit='repos'
+        )
+        all_repos_cntr = en_manager.counter(
+            desc="repos in batch", total=len(repolist), unit='repos'
+        )
+        for repo in repolist:
             ret_futures.append(executor.schedule(
                 repo_worker,
                 (repo, node_q),
                 {'workers': args.workers}
             ))
+            all_repos_sched_cntr.update()
+        all_repos_sched_cntr.close()
         try:
-            for r in tqdm(
-                    futures.as_completed(ret_futures),
-                    total=len(ret_futures),
-                    desc="analyzing repos",
-                    position=2,
-                    unit='repos',
-                    unit_scale=True
-                ):
+            for r in futures.as_completed(ret_futures):
                 try:
                     repo_dict, tr = r.result()
                 except RepoExistsError as e:
@@ -135,6 +142,7 @@ def batch_analyze(args):
                     **repo_dict
                 }
                 tr.update_in_db(db)
+                all_repos_cntr.update()
         except Exception as e:
             log.warn(f"stopping jobs...")
             for rf in ret_futures:
