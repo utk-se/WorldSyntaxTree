@@ -11,12 +11,16 @@ from arango import ArangoClient
 import enlighten
 
 from wsyntree import log
+from wsyntree.exceptions import *
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url, desensitize_url
-from wsyntree.tree_models import WSTRepository
+import wsyntree.tree_models as tree_models
+from wsyntree.tree_models import (
+    WSTRepository, _db_collections, _db_edgecollections, _graph_edge_definitions
+)
 
 from .arango_collector import WST_ArangoTreeCollector
-from .batch_analyzer import set_batch_analyze_args, RepoExistsError
+from .batch_analyzer import set_batch_analyze_args
 
 
 def analyze(args):
@@ -63,30 +67,29 @@ def database_init(args):
     p = urlparse(args.db)
     odb = client.db(p.path[1:], username=p.username, password=p.password)
 
-    newdcls = ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']
-    newecls = ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']
-    _ngraphs = {
-        "wst-repo-files": {
-            "edge_collection": 'wst-fromrepo',
-            "from_vertex_collections": ['wstfiles'],
-            "to_vertex_collections": ['wstrepos'],
-        },
-        "wst-file-nodes": {
-            "edge_collection": 'wst-fromfile',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wstfiles'],
-        },
-        "wst-node-parents": {
-            "edge_collection": 'wst-nodeparent',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wstnodes'],
-        },
-        "wst-node-text": {
-            "edge_collection": 'wst-nodetext',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wsttexts'],
-        },
-    }
+    # TODO replace with the generated collection names from tree_models
+    # _ngraphs = {
+    #     "wst-repo-files": {
+    #         "edge_collection": 'wst-fromrepo',
+    #         "from_vertex_collections": ['wstfiles'],
+    #         "to_vertex_collections": ['wstrepos'],
+    #     },
+    #     "wst-file-nodes": {
+    #         "edge_collection": 'wst-fromfile',
+    #         "from_vertex_collections": ['wstnodes'],
+    #         "to_vertex_collections": ['wstfiles'],
+    #     },
+    #     "wst-node-parents": {
+    #         "edge_collection": 'wst-nodeparent',
+    #         "from_vertex_collections": ['wstnodes'],
+    #         "to_vertex_collections": ['wstnodes'],
+    #     },
+    #     "wst-node-text": {
+    #         "edge_collection": 'wst-nodetext',
+    #         "from_vertex_collections": ['wstnodes'],
+    #         "to_vertex_collections": ['wsttexts'],
+    #     },
+    # }
 
     if args.delete:
         log.warn(f"deleting all data ...")
@@ -94,10 +97,10 @@ def database_init(args):
         jobs = []
         db = odb.begin_async_execution()
 
-        jobs.append(db.delete_graph('wst', ignore_missing=True))
-        for c in newdcls:
+        jobs.append(db.delete_graph(tree_models._graph_name, ignore_missing=True))
+        for c in _db_collections:
             jobs.append(db.delete_collection(c, ignore_missing=True))
-        for c in newecls:
+        for c in _db_edgecollections:
             jobs.append(db.delete_collection(c, ignore_missing=True))
 
         jt_wait = len(jobs)
@@ -116,25 +119,25 @@ def database_init(args):
     log.info(f"Creating collections ...")
 
     colls = {}
-    for cn in newdcls:
+    for cn in _db_collections:
         if db.has_collection(cn):
             colls[cn] = db.collection(cn)
         else:
             colls[cn] = db.create_collection(cn, user_keys=True)
-    for cn in newecls:
+    for cn in _db_edgecollections:
         if db.has_collection(cn):
             colls[cn] = db.collection(cn)
         else:
             colls[cn] = db.create_collection(cn, user_keys=True, edge=True)
 
     graph = None
-    if not db.has_graph('wst'):
-        graph = db.create_graph('wst')
+    if not db.has_graph(tree_models._graph_name):
+        graph = db.create_graph(tree_models._graph_name)
     else:
-        graph = db.graph('wst')
+        graph = db.graph(tree_models._graph_name)
     edgedefs = {}
 
-    for gk, gv in _ngraphs.items():
+    for gk, gv in _graph_edge_definitions.items():
         if not graph.has_edge_definition(gv['edge_collection']):
             log.debug(f"Added graph edges {gv}")
             edgedefs[gk] = graph.create_edge_definition(**gv)

@@ -103,6 +103,10 @@ class WST_Document():
     __floordiv__ = _make_edge
     __truediv__ = _make_edge
 
+    def __repr__(self) -> str:
+        return f"{type(self)}({self.__dict__})"
+    __str__ = __repr__
+
 class WST_Edge(dict):
     # These slots are NOT part of the inserted document in Arango
     __slots__ = [
@@ -141,6 +145,9 @@ class WST_Edge(dict):
         edges.insert(self)
 
 ### DOCUMENT TYPES
+# NOTE
+# please try to keep all _key values constant length if possible
+# notable exceptions include gaurantees like WST `language` names length
 
 class WSTText(WST_Document):
     _collection = "wst_texts"
@@ -182,7 +189,7 @@ class WSTNode(WST_Document):
         "x2",
         "y2",
 
-        # preorder: depth-first traversal order, unique within file
+        # preorder: depth-first traversal order, unique within WSTCodeTree
         # aka: topologically sorted
         # root node is zero and has no parent
         "preorder",
@@ -208,10 +215,6 @@ class WSTCodeTree(WST_Document):
         "error",
     ]
 
-    def _genkey(self):
-        self._key = f"{self.language}-{self.content_hash}"
-        return self._key
-
 class WSTFile(WST_Document):
     _collection = "wst_files"
     _edge_to = {
@@ -219,8 +222,8 @@ class WSTFile(WST_Document):
         # WSTText._collection: "wst-file-text", # probably unneeded
     }
     __slots__ = [
-        "path",
-        "mode",
+        "path", # path as stored in git / relative to workdir
+        "mode", # git mode, not unix perms, but still octal
 
         # so that we can build _key / _id to a CodeTree without a lookup,
         # this needs to match WSTCodeTree.content_hash
@@ -229,6 +232,7 @@ class WSTFile(WST_Document):
 
     def _genkey(self):
         self._key = f"{shake_256(self.path, 32)}-{self.content_hash}"
+        return self._key
 
 class WSTCommit(WST_Document):
     _collection = "wst_commits"
@@ -237,8 +241,10 @@ class WSTCommit(WST_Document):
         WSTFile._collection: "wst-commit-files", # multi
     }
     __slots__ = [
-        "commitmsg",
-        "git_timestamp", # when commit was made according to git
+        "commit_time",
+        "commit_time_offset",
+        "parent_ids",
+        "tree_id",
     ]
 
 class WSTRepository(WST_Document):
@@ -264,6 +270,7 @@ class WSTRepository(WST_Document):
 # autogenerate names for the database:
 _db_collections = []
 _db_edgecollections = []
+_graph_edge_definitions = {}
 
 for localname, value in dict(locals()).items():
     if localname.startswith('WST'):
@@ -271,9 +278,20 @@ for localname, value in dict(locals()).items():
             if isinstance(value._collection, str):
                 _db_collections.append(value._collection)
             if hasattr(value, '_edge_to'):
-                for targettype, edgecollname in value._edge_to.items():
+                for targetcoll, edgecollname in value._edge_to.items():
                     _db_edgecollections.append(edgecollname)
+                    if edgecollname in _graph_edge_definitions:
+                        raise EdgeDefinitionDuplicateError(f"{edgecollname} already in use by a different vertex type pair")
+                    _graph_edge_definitions[edgecollname] = {
+                        "edge_collection": edgecollname,
+                        "from_vertex_collections": [value._collection],
+                        "to_vertex_collections": [targetcoll],
+                    }
 
 if __name__ == '__main__':
+    import pprint
+    pp = pprint.PrettyPrinter(indent=2)
     log.info(f"Collections: {_db_collections}")
     log.info(f"Edge Collections: {_db_edgecollections}")
+    log.info(f"Graph construction:")
+    pp.pprint(_graph_edge_definitions)
