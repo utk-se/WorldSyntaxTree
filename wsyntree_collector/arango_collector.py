@@ -104,14 +104,16 @@ class WST_ArangoTreeCollector():
             )
             return git.Repository(repopath)
 
-    # @functools.cached_property
     @property
-    def _current_commit_hash(self) -> str:
+    def _current_commit(self) -> git.Commit:
         try:
-            return self._get_git_repo().revparse_single('HEAD').hex
+            return self._get_git_repo().revparse_single('HEAD')
         except KeyError as e:
             log.error(f"repo in {self._local_repo_path} might not have HEAD?")
-            raise e
+
+    @property
+    def _current_commit_hash(self) -> str:
+        return self._current_commit.hex
 
     ### NOTE immutable properties
 
@@ -133,6 +135,9 @@ class WST_ArangoTreeCollector():
 
     def delete_all_tree_data(self):
         """Delete all data in the tree associated with this repo object"""
+
+        raise NotImplementedError(f"Deletion not updated to support new tree structure.")
+
         if not self._db:
             self._connect_db()
         if not self._tree_repo:
@@ -171,54 +176,38 @@ class WST_ArangoTreeCollector():
     def collect_all(self, existing_node_q = None):
         """Creates every node down the tree for this repo"""
         # create the main Repos
-        nr = WSTRepository(
-            _key=self._current_commit_hash,
+        self._tree_repo = WSTRepository(
             type='git',
             url=self.repo_url,
-            commit=self._current_commit_hash,
             path=self._url_path,
             analyzed_time=int(time.time()),
             wst_status="started",
         )
-        self._tree_repo = nr
         # self._coll['wstrepos'].insert(nr.__dict__)
-        nr.insert_in_db(self._db)
+        self._tree_repo.insert_in_db(self._db)
+
+        # attempt to find an existing commit in the db:
+        if not (commit := WSTCommit.get(self._db, self._current_commit_hash)):
+            _cc = self._current_commit
+            self._wst_commit = WSTCommit(
+                _key=_cc.hex,
+                commit_time=_cc.commit_time,
+                commit_time_offset=_cc.commit_time_offset,
+                parent_ids=[str(i) for i in _cc.parent_ids],
+                tree_id=str(_cc.tree_id),
+            )
+            log.debug(f"Inserting {self._wst_commit}")
+            self._wst_commit.insert_in_db(self._db)
+        else:
+            self._wst_commit = commit
+        rel_repo_commit = self._tree_repo / self._wst_commit
+        rel_repo_commit.insert_in_db(self._db)
 
         index = self._get_git_repo().index
         index.read()
 
         # file-level processing
-        files = []
-        # if self._worker_count == 1:
-        #     with pushd(self._local_repo_path):
-        #         cntr = self.en_manager.counter(
-        #             desc="scanning git", total=len(index), leave=False
-        #         )
-        #         for gobj in index:
-        #             if not os.path.isfile(gobj.path):
-        #                 continue
-        #             nf = WSTFile(
-        #                 _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
-        #                 path=gobj.path,
-        #                 oid=gobj.hex,
-        #             )
-        #             files.append(nf)
-        #             cntr.update()
-        #         cntr.close()
-        #         log.info(f"{len(files)} to process")
-        #         cntr = self.en_manager.counter(
-        #             desc=""
-        #         )
-        #         for file in files:
-        #             try:
-        #                 r = process_file(file, self._tree_repo, self.database_conn_str)
-        #                 log.debug(f"{file.path} processing done: {r}")
-        #             except Exception as e:
-        #                 log.err(f"during {file.path}, document {file._key}")
-        #                 raise e
-        #         self._tree_repo.wst_status = "completed"
-        #         self._tree_repo.update_in_db(self._db)
-        #         return
+        # files = []
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
             if not existing_node_q:
                 self._node_queue = self._mp_manager.Queue()
@@ -230,20 +219,26 @@ class WST_ArangoTreeCollector():
                 log.info(f"scanning git for files ...")
                 ret_futures = []
                 cntr_add_jobs = self.en_manager.counter(
-                    desc=f"scanning {self._url_path}", total=len(index),
+                    desc=f"scanning files for {self._url_path}", total=len(index),
                 )
                 for gobj in index:
                     if not os.path.isfile(gobj.path):
                         continue
+                    _file = Path(gobj.path)
+                    # check size of file first:
+                    _fstat = _file.stat()
+
                     nf = WSTFile(
-                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
+                        # _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
                         path=gobj.path,
-                        oid=gobj.hex,
+                        mode=gobj.mode,
+                        size=_fstat.st_size,
+                        git_oid=gobj.hex,
                     )
                     # file_paths.append(p)
                     ret_futures.append(executor.schedule(
                         process_file,
-                        (nf, self._tree_repo, self.database_conn_str),
+                        (nf, self._wst_commit, self.database_conn_str),
                         {'node_q': self._node_queue, 'en_manager': self.en_manager}
                     ))
                     cntr_add_jobs.update()
@@ -256,8 +251,7 @@ class WST_ArangoTreeCollector():
                         leave=False,
                     )
                     for r in futures.as_completed(ret_futures):
-                        nf = r.result()
-                        # s = str(nf)
+                        completed_file = r.result()
                         # log.debug(f"result {nf}")
                         cntr_files_processed.update()
                     # after all results returned

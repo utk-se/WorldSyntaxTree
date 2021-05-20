@@ -6,7 +6,7 @@ from json import JSONEncoder
 from arango.database import StandardDatabase, BatchDatabase
 
 from . import log
-from .utils import dotdict
+from .utils import dotdict, shake256hex
 
 __all__ = [
     'WSTRepository', 'WSTCommit', 'WSTFile',
@@ -84,7 +84,7 @@ class WST_Document():
 
     def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
         """Insert this document into a db"""
-        if not self._key:
+        if not hasattr(self, '_key') or not self._key:
             self._genkey()
         coll = db.collection(self._collection)
         return coll.insert(self.__dict__)
@@ -209,10 +209,9 @@ class WSTCodeTree(WST_Document):
         "language",
         "lang_version", # probably the commit of tree-sitter language lib used
         "content_hash", # 128 hex chars
-        "git_oid", # object ID from git
 
         # set when we could not generate all WSTNodes
-        "error",
+        "error", # any reason the CodeTree may not be accurate or complete
     ]
 
 class WSTFile(WST_Document):
@@ -224,6 +223,9 @@ class WSTFile(WST_Document):
     __slots__ = [
         "path", # path as stored in git / relative to workdir
         "mode", # git mode, not unix perms, but still octal
+        "size", # in bytes
+        "git_oid", # object ID from git
+        "error", # any reason a CodeTree could not be generated for this file
 
         # so that we can build _key / _id to a CodeTree without a lookup,
         # this needs to match WSTCodeTree.content_hash

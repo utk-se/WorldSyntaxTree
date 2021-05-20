@@ -21,15 +21,13 @@ from tqdm import tqdm
 from pebble import ProcessPool
 
 from wsyntree import log
+from wsyntree.exceptions import *
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url, desensitize_url
 from wsyntree.tree_models import WSTRepository
 
 from .arango_collector import WST_ArangoTreeCollector
 
-
-class RepoExistsError(FileExistsError):
-    pass
 
 def set_batch_analyze_args(cmd_batch):
     cmd_batch.set_defaults(func=batch_analyze)

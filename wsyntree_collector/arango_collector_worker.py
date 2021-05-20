@@ -5,6 +5,7 @@ import os
 from urllib.parse import urlparse
 from contextlib import nullcontext
 import functools
+import hashlib
 
 from arango import ArangoClient
 import enlighten
@@ -12,9 +13,13 @@ from pebble import concurrent
 import cachetools.func
 
 from wsyntree import log, tree_models
+from wsyntree.exceptions import *
 from wsyntree.utils import dotdict, strip_url, sha1hex, sha512hex
 from wsyntree.tree_models import * # __all__
 from wsyntree.wrap_tree_sitter import get_TSABL_for_file
+
+_HASH_CHUNK_READ_SIZE_BYTES = 2 ** 16 # 64 KiB
+
 
 @concurrent.process
 def _tqdm_node_receiver(q, en_manager):
@@ -61,22 +66,28 @@ def process_file(*args, **kwargs):
     try:
         return _process_file(*args, **kwargs)
     except Exception as e:
-        log.err(f"process_file error: {e}")
+        log.err(f"process_file error: {type(e)}: {e}")
         raise e
 
 def _process_file(
         file: WSTFile,
-        tree_repo: WSTRepository,
+        wst_commit: WSTCommit, # the commit the file is a part of
         database_conn_str: str,
         *,
         node_q = None,
         en_manager = None,
         batch_write_size=1000,
     ):
-    """Runs one file's analysis from a repo.
+    """Given an incomplete WSTFile,
+    Creates a WSTCodeTree, WSTNodes, and WSTTexts for it
+
+    Process working directory should already be within checked out repository
 
     node_q: push integers for counting number of added syntax nodes
-    notify_every: send integer to node_q at least `notify_every` nodes inserted
+    en_manager: Enlighten Manager compatible API to get Counters from
+    batch_write_size: when number of items in memory reaches this, write them all
+
+    Returns the completed AND inserted WSTFile, linked with wst_commit
     """
 
     ur = urlparse(database_conn_str)
@@ -91,16 +102,46 @@ def _process_file(
         username=_db_username,
         password=_db_password,
     )
-    edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
+    # edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
+
+    # always done for every file:
+    file_shake_256 = hashlib.shake_256() # WST hashes
+    file_sha1 = hashlib.sha1() # git oid hashes
+    with open(file.path, 'rb') as f:
+        while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
+            file_shake_256.update(data)
+            file_sha1.update(data)
+    # checking if file has been modified on disk vs git:
+    if file_sha1.hexdigest() != file.git_oid:
+        # we will NOT insert this file into the db if this happens
+        raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
+    file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
 
     lang = get_TSABL_for_file(file.path)
     file.language = lang.lang if lang else None
+    file.error = "WST_NO_LANGUAGE" if not lang else None
 
-    file.insert_in_db(db)
-    # file.repo.connect(tree_repo)
-    edge_fromrepo.insert(file / tree_repo)
+    try:
+        file.insert_in_db(db)
+        (wst_commit / file).insert_in_db(db) # commit -> file
+    except arango.exceptions.DocumentInsertError as e:
+        if e.http_code == 409:
+            # already exists: get it
+            preexisting_file = WSTFile.get(db, file._key)
+            if preexisting_file.error != file.error:
+                log.debug(f"existing file: {preexisting_file}")
+                log.debug(f"new file: {file}")
+                raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has an unexpected error status of {preexisting_file.error}")
+            (wst_commit / preexisting_file).insert_in_db(db)
+            return preexisting_file
+        else:
+            raise e
+    except Exception as e:
+        log.error(f"Failed to insert WSTFile into db!")
+        raise e
 
     if lang is None:
+        # no WSTCodeTree will be generated
         return file
 
     tree = lang.parse_file(file.path)
@@ -118,7 +159,7 @@ def _process_file(
     parent_stack = []
     batch_writes = []
     try:
-        def get_or_create_WSTText(text_key: str, length: int, content: str):
+        def get_or_create_WSTText(length: int, content: bytes):
             nt = WSTText.get(db, text_key)
             if nt is None:
                 nt = WSTText(
