@@ -9,12 +9,14 @@ import concurrent.futures as futures
 import os
 import time
 
+import arango.exceptions
 from arango import ArangoClient
 import pygit2 as git
 from pebble import ProcessPool, ThreadPool
 import enlighten
 
 from wsyntree import log, tree_models, multiprogress
+from wsyntree.exceptions import *
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import (
@@ -190,7 +192,14 @@ class WST_ArangoTreeCollector():
             wst_status="started",
         )
         # self._coll['wstrepos'].insert(nr.__dict__)
-        self._tree_repo.insert_in_db(self._db)
+        try:
+            self._tree_repo.insert_in_db(self._db)
+        except arango.exceptions.DocumentInsertError as e:
+            if e.http_code == 409:
+                existing_repo = WSTRepository.get(self._db, self._tree_repo._key)
+                raise RepoExistsError(f"Already present: {existing_repo}")
+            else:
+                raise e
 
         # attempt to find an existing commit in the db:
         if not (commit := WSTCommit.get(self._db, self._current_commit_hash)):
@@ -263,6 +272,7 @@ class WST_ArangoTreeCollector():
                     # after all results returned
                     self._tree_repo.wst_status = "completed"
                     self._tree_repo.update_in_db(self._db)
+                    log.info(f"{self._url_path} marked completed.")
                 except KeyboardInterrupt as e:
                     log.warn(f"stopping collection ...")
                     for rf in ret_futures:
