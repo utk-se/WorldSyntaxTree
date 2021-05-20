@@ -20,7 +20,7 @@ from arango import ArangoClient
 from tqdm import tqdm
 from pebble import ProcessPool
 
-from wsyntree import log
+from wsyntree import log, multiprogress
 from wsyntree.exceptions import *
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url, desensitize_url
