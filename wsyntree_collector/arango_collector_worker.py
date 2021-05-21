@@ -121,7 +121,6 @@ def _process_file(
             log.warn(f"{file.path} git oid is {file_git_oid} while expected oid is {file.git_oid}")
             log.warn(f"{file.path} mode is {oct(file.mode)}")
             raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
-            file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
     if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
         # for normal files
         with open(file.path, 'rb') as f:
@@ -130,6 +129,7 @@ def _process_file(
         lang = get_TSABL_for_file(file.path)
         file.language = lang.lang if lang else None
         file.error = "WST_NO_LANGUAGE" if not lang else None
+        file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
     elif file.mode == git.GIT_FILEMODE_LINK:
         lang = None
         file.language = None
@@ -149,6 +149,8 @@ def _process_file(
         except ValueError as e:
             # link target probably not within our repo dir
             file.symlink['relative'] = None
+        file_shake_256.update(str(target).encode())
+        file.content_hash = file_shake_256.hexdigest(64)
     else:
         raise UnhandledGitFileMode(f"{file.path} mode is {oct(file.mode)}")
 
