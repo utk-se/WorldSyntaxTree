@@ -236,7 +236,7 @@ class WST_ArangoTreeCollector():
                 ret_futures = []
                 cntr_add_jobs = self.en_manager.counter(
                     desc=f"scanning files for {self._url_path}",
-                    total=len(index), autorefresh=True
+                    total=len(index), autorefresh=True, leave=False
                 )
                 for gobj in index:
                     if not os.path.isfile(gobj.path):
@@ -259,7 +259,7 @@ class WST_ArangoTreeCollector():
                         {'node_q': self._node_queue, 'en_manager': self.en_manager_proxy}
                     ))
                     cntr_add_jobs.update()
-                cntr_add_jobs.close()
+                cntr_add_jobs.close(clear=True)
                 log.info(f"processing files with {self._worker_count} workers ...")
                 try:
                     cntr_files_processed = self.en_manager.counter(

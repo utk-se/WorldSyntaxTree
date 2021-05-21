@@ -199,17 +199,6 @@ def _process_file(
     parent_stack = []
     batch_writes = []
     try:
-        def get_or_create_WSTText(length: int, content: bytes):
-            nt = WSTText.get(db, text_key)
-            if nt is None:
-                nt = WSTText(
-                    _key=text_key,
-                    length=textlength,
-                    text=text,
-                )
-            batch_writes.append(nt)
-            return nt
-
         # definitions: nn = new node, nt = new text, nc = node count
         while cursor.node is not None:
             cur_node = cursor.node
@@ -241,6 +230,9 @@ def _process_file(
             if parentorder is not None:
                 # edge_nodeparent.insert(nn / order_to_id[parentorder])
                 batch_writes.append(nn / order_to_id[parentorder])
+            else:
+                # if it is none, this is the root node, link it
+                batch_writes.append(code_tree / nn)
 
             # text storage (deduplication)
             nt = WSTText(
