@@ -4,5 +4,5 @@ pygit2
 filelock
 tqdm
 Pebble
-enlighten
+enlighten==1.9.0
 psutil

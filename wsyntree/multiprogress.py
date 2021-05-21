@@ -50,9 +50,11 @@ def enlighten_proxy_generator(mp_manager_instance, request_queue):
 
     send `None` into the queue instead of `Connection` to exit this thread
     """
+    call_lock = threading.Lock()
     while (conn := request_queue.get()) is not None:
         try:
             request = conn.recv()
+            call_lock.acquire(timeout=5)
             # use same req format as Python's native multiprocessing:
             ignore, funcname, args, kwds = request
             new_proxy = mp_manager_instance.CreateEnlightenProxy(funcname, args, kwds)
@@ -62,6 +64,8 @@ def enlighten_proxy_generator(mp_manager_instance, request_queue):
             msg = ('#TRACEBACK', formatted_trace)
             log.warn(f"failed to generate a proxy:")
             log.trace(log.warn, formatted_trace)
+        finally:
+            call_lock.release()
         try:
             # log.debug(f"sending {msg}")
             conn.send(msg)
