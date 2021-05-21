@@ -58,8 +58,10 @@ def enlighten_proxy_generator(mp_manager_instance, request_queue):
             new_proxy = mp_manager_instance.CreateEnlightenProxy(funcname, args, kwds)
             msg = ('#RESULT', new_proxy)
         except Exception:
-            msg = ('#TRACEBACK', format_exc())
-            log.warn(msg)
+            formatted_trace = format_exc()
+            msg = ('#TRACEBACK', formatted_trace)
+            log.warn(f"failed to generate a proxy:")
+            log.trace(log.warn, formatted_trace)
         try:
             # log.debug(f"sending {msg}")
             conn.send(msg)
