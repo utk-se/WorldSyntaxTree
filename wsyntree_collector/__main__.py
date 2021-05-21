@@ -3,8 +3,11 @@ import argparse
 from multiprocessing import Pool
 import sys
 import os
+import psutil
 from urllib.parse import urlparse
 import time
+import signal
+import traceback
 
 import pygit2 as git
 from arango import ArangoClient
@@ -66,30 +69,6 @@ def database_init(args):
     client = ArangoClient(hosts=strip_url(args.db))
     p = urlparse(args.db)
     odb = client.db(p.path[1:], username=p.username, password=p.password)
-
-    # TODO replace with the generated collection names from tree_models
-    # _ngraphs = {
-    #     "wst-repo-files": {
-    #         "edge_collection": 'wst-fromrepo',
-    #         "from_vertex_collections": ['wstfiles'],
-    #         "to_vertex_collections": ['wstrepos'],
-    #     },
-    #     "wst-file-nodes": {
-    #         "edge_collection": 'wst-fromfile',
-    #         "from_vertex_collections": ['wstnodes'],
-    #         "to_vertex_collections": ['wstfiles'],
-    #     },
-    #     "wst-node-parents": {
-    #         "edge_collection": 'wst-nodeparent',
-    #         "from_vertex_collections": ['wstnodes'],
-    #         "to_vertex_collections": ['wstnodes'],
-    #     },
-    #     "wst-node-text": {
-    #         "edge_collection": 'wst-nodetext',
-    #         "from_vertex_collections": ['wstnodes'],
-    #         "to_vertex_collections": ['wsttexts'],
-    #     },
-    # }
 
     if args.delete:
         log.warn(f"deleting all data ...")
@@ -228,7 +207,20 @@ def __main__():
         log.warn(f"Please supply a valid subcommand!")
         return
 
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt as e:
+        log.warn(f"Stopping all child processes...")
+        cur_proc = psutil.Process()
+        children = cur_proc.children(recursive=True)
+        for c in children:
+            os.kill(c.pid, signal.SIGINT)
+        psutil.wait_procs(children, timeout=5)
+        children = cur_proc.children(recursive=True)
+        for c in children:
+            c.terminate()
+        raise e
 
 if __name__ == '__main__':
+    os.setpgrp()
     __main__()

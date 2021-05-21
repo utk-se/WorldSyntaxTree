@@ -1,5 +1,6 @@
 
 import functools
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -101,7 +102,7 @@ class WST_ArangoTreeCollector():
         repodir = self._local_repo_path
         if not (repodir / '.git').exists():
             repodir.mkdir(mode=0o770, parents=True, exist_ok=True)
-            log.debug(f"cloning repo to {repodir} ...")
+            log.info(f"cloning repo to {repodir} ...")
             return git.clone_repository(
                 self.repo_url,
                 repodir.resolve()
@@ -234,7 +235,8 @@ class WST_ArangoTreeCollector():
                 log.info(f"scanning git for files ...")
                 ret_futures = []
                 cntr_add_jobs = self.en_manager.counter(
-                    desc=f"scanning files for {self._url_path}", total=len(index),
+                    desc=f"scanning files for {self._url_path}",
+                    total=len(index), autorefresh=True
                 )
                 for gobj in index:
                     if not os.path.isfile(gobj.path):
@@ -263,7 +265,7 @@ class WST_ArangoTreeCollector():
                     cntr_files_processed = self.en_manager.counter(
                         desc=f"processing {self._url_path}",
                         total=len(ret_futures), unit="files",
-                        leave=False,
+                        leave=False, autorefresh=True
                     )
                     for r in futures.as_completed(ret_futures):
                         completed_file = r.result()
@@ -283,6 +285,7 @@ class WST_ArangoTreeCollector():
                     # raise e
                     self._tree_repo.wst_status = "cancelled"
                     self._tree_repo.update_in_db(self._db)
+                    log.info(f"{self._tree_repo.url} wst_status marked as cancelled")
                 except Exception as e:
                     self._tree_repo.wst_status = "error"
                     self._tree_repo.update_in_db(self._db)
@@ -299,6 +302,14 @@ class WST_ArangoTreeCollector():
         """Clone the repo, connect to the DB, create working directories, etc."""
         self._connect_db()
         repo = self._get_git_repo()
+        if self._current_commit is None:
+            log.warn(f"Deleting and re-cloning repo in {self._local_repo_path}")
+            try:
+                shutil.rmtree(self._local_repo_path)
+                repo = self._get_git_repo()
+            except Exception as e:
+                log.error(f"Failed to repair repository: {type(e)}: {e}")
+                raise e
         # to _target_commit if set
         if self._target_commit and self._target_commit != self._current_commit_hash:
             log.info(f"Checking out commit {self._target_commit}...")
@@ -309,7 +320,7 @@ class WST_ArangoTreeCollector():
                 repo.checkout_tree(commit.tree)
                 repo.head.set_target(commit.id)
             except Exception as e:
-                raise
+                raise e
             log.info(f"Repo at {self._local_repo_path} now at {self._current_commit_hash}")
         elif self._target_commit and self._target_commit == self._current_commit_hash:
-            log.info(f"Repo in {self._local_repo_path} is already at {self._target_commit}")
+            log.debug(f"Repo in {self._local_repo_path} is already at {self._target_commit}")

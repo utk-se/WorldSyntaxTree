@@ -27,6 +27,7 @@ from wsyntree.utils import strip_url, desensitize_url
 from wsyntree.tree_models import WSTRepository
 
 from .arango_collector import WST_ArangoTreeCollector
+from .arango_collector_worker import _tqdm_node_receiver
 
 
 def set_batch_analyze_args(cmd_batch):
@@ -78,7 +79,7 @@ def repo_worker(
     try:
         collector.collect_all(node_q)
     except Exception as e:
-        log.err(f"Failed to analyze {collector}: {type(e)}: {e}")
+        # log.err(f"Failed to analyze {collector}: {type(e)}: {e}")
         raise e
 
     return (repo_dict, collector._tree_repo)
@@ -104,53 +105,59 @@ def batch_analyze(args):
 
     log.debug(f"checking {len(repolist)} items in repo list")
 
-    with ProcessPool(max_workers=args.jobs) as executor:
+    try:
         multiprogress.main_proc_setup()
         multiprogress.start_server_thread()
-
         en_manager_proxy = multiprogress.get_manager_proxy()
         en_manager = multiprogress.get_manager()
+        node_receiver = _tqdm_node_receiver(node_q, en_manager_proxy)
 
-        ret_futures = []
-        all_repos_sched_cntr = en_manager.counter(
-            desc="adding repo jobs", total=len(repolist), unit='repos'
-        )
-        all_repos_cntr = en_manager.counter(
-            desc="repos in batch", total=len(repolist), unit='repos'
-        )
-        for repo in repolist:
-            ret_futures.append(executor.schedule(
-                repo_worker,
-                (repo, node_q),
-                {'workers': args.workers}
-            ))
-            all_repos_sched_cntr.update()
-        all_repos_sched_cntr.close()
+        with ProcessPool(max_workers=args.jobs) as executor:
+            ret_futures = []
+            all_repos_sched_cntr = en_manager.counter(
+                desc="adding repo jobs", total=len(repolist), unit='repos'
+            )
+            all_repos_cntr = en_manager.counter(
+                desc="repos in batch", total=len(repolist), unit='repos',
+                autorefresh=True
+            )
+            for repo in repolist:
+                ret_futures.append(executor.schedule(
+                    repo_worker,
+                    (repo, node_q),
+                    {'workers': args.workers}
+                ))
+                all_repos_sched_cntr.update()
+            all_repos_sched_cntr.close()
+            try:
+                for r in futures.as_completed(ret_futures):
+                    try:
+                        repo_dict, tr = r.result()
+                    except RepoExistsError as e:
+                        if args.skip_exists:
+                            log.debug(f"{e}")
+                            all_repos_cntr.update()
+                            continue
+                        else:
+                            log.err(f"{e}")
+                            raise e
+                    # save the original repo data to the db as well:
+                    tr.wst_extra = {
+                        "wst_batch": batch_id,
+                        **repo_dict
+                    }
+                    tr.update_in_db(db)
+                    all_repos_cntr.update()
+            except KeyboardInterrupt as e:
+                log.warn(f"stopping batch worker pool...")
+                executor.stop()
+                for rf in ret_futures:
+                    rf.cancel()
+                log.warn(f"waiting for already started jobs to finish...")
+                executor.join()
+    finally:
         try:
-            for r in futures.as_completed(ret_futures):
-                try:
-                    repo_dict, tr = r.result()
-                except RepoExistsError as e:
-                    if args.skip_exists:
-                        log.debug(f"{e}")
-                    else:
-                        log.err(f"{e}")
-                        raise e
-                # save the original repo data to the db as well:
-                tr.wst_extra = {
-                    "wst_batch": batch_id,
-                    **repo_dict
-                }
-                tr.update_in_db(db)
-                all_repos_cntr.update()
-        except Exception as e:
-            log.warn(f"stopping jobs...")
-            for rf in ret_futures:
-                rf.cancel()
-            executor.close()
-            executor.join(5)
-            executor.stop()
-            if not isinstance(e, KeyboardInterrupt):
-                raise e
-        finally:
             node_q.put(None)
+            receiver_exit = node_receiver.result(timeout=1)
+        except (BrokenPipeError, KeyboardInterrupt) as e:
+            pass

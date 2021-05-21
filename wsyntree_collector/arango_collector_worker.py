@@ -7,6 +7,7 @@ from contextlib import nullcontext
 import functools
 import hashlib
 
+import pygit2 as git
 import arango.exceptions
 from arango import ArangoClient
 import enlighten
@@ -38,7 +39,7 @@ def _tqdm_node_receiver(q, en_manager):
         }
         dedup_stats = {}
         cntr = en_manager.counter(
-            desc="writing to db", position=1, unit='docs',
+            desc="writing to db", position=1, unit='docs', autorefresh=True
         )
         # with tqdm(desc="writing documents to db", position=1, unit='docs', unit_scale=True) as tbar:
         while (nc := q.get()) is not None:
@@ -113,9 +114,12 @@ def _process_file(
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
     file_git_sha1 = hashlib.sha1() # git oid hashes
-    file_git_sha1.update(b'blob ') # begin with the git object header info
-    file_git_sha1.update(str(file.size).encode())
-    file_git_sha1.update(b'\x00')
+    if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
+        file_git_sha1.update(b'blob ') # begin with the git object header info
+        file_git_sha1.update(str(file.size).encode())
+        file_git_sha1.update(b'\x00')
+    else:
+        raise UnhandledGitFileMode(f"{file.path} mode is {oct(file.mode)}")
     with open(file.path, 'rb') as f:
         while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
             file_shake_256.update(data)
@@ -124,7 +128,7 @@ def _process_file(
     if file_git_sha1.hexdigest() != file.git_oid:
         # we will NOT insert this file into the db if this happens
         log.warn(f"{file.path} gitlike sha1 is {file_git_sha1.hexdigest()} while oid is {file.git_oid}")
-        log.warn(f"{file.path} mode is {file.mode}")
+        log.warn(f"{file.path} mode is {oct(file.mode)}")
         raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
     file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
 
@@ -298,6 +302,9 @@ def _process_file(
                             }
                         ))
                     return file # end process
+    except BrokenPipeError as e:
+        log.warn(f"caught {type(e)}: {e}")
+        os._exit(1)
     except Exception as e:
         code_tree.error = str(e)
         code_tree.update_in_db(db)

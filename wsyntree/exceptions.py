@@ -10,3 +10,9 @@ class EdgeDefinitionDuplicateError(ValueError, WSTBaseError):
 
 class LocalCopyOutOfSync(ValueError, WSTBaseError):
     pass
+
+class PrerequisiteStateInvalid(ValueError, WSTBaseError):
+    pass
+
+class UnhandledGitFileMode(ValueError, WSTBaseError):
+    pass

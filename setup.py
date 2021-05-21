@@ -37,6 +37,7 @@ setup(
         "filelock",
         "cachetools",
         "enlighten",
+        "psutil",
     ],
     entry_points={
         'console_scripts': [
