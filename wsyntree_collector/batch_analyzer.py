@@ -117,10 +117,6 @@ def batch_analyze(args):
             all_repos_sched_cntr = en_manager.counter(
                 desc="adding repo jobs", total=len(repolist), unit='repos'
             )
-            all_repos_cntr = en_manager.counter(
-                desc="repos in batch", total=len(repolist), unit='repos',
-                autorefresh=True
-            )
             for repo in repolist:
                 ret_futures.append(executor.schedule(
                     repo_worker,
@@ -129,6 +125,10 @@ def batch_analyze(args):
                 ))
                 all_repos_sched_cntr.update()
             all_repos_sched_cntr.close()
+            all_repos_cntr = en_manager.counter(
+                desc="repos in batch", total=len(repolist), unit='repos',
+                autorefresh=True
+            )
             try:
                 for r in futures.as_completed(ret_futures):
                     try:

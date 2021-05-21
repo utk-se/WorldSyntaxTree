@@ -234,6 +234,7 @@ class WSTFile(WST_Document):
         "size", # in bytes
         "git_oid", # object ID from git
         "error", # any reason a CodeTree could not be generated for this file
+        "symlink", # data about the symlink, if not a link, None / null
 
         # so that we can build _key / _id to a CodeTree without a lookup,
         # this needs to match WSTCodeTree.content_hash

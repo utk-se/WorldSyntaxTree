@@ -113,28 +113,44 @@ def _process_file(
 
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
-    file_git_sha1 = hashlib.sha1() # git oid hashes
+    file_git_oid = str(git.hashfile(file.path)) # transforms data with header & filters
+    if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE, git.GIT_FILEMODE_LINK):
+        # checking if file has been modified on disk vs git:
+        if file_git_oid != file.git_oid:
+            # we will NOT insert this file into the db if this happens
+            log.warn(f"{file.path} git oid is {file_git_oid} while expected oid is {file.git_oid}")
+            log.warn(f"{file.path} mode is {oct(file.mode)}")
+            raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
+            file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
     if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
-        file_git_sha1.update(b'blob ') # begin with the git object header info
-        file_git_sha1.update(str(file.size).encode())
-        file_git_sha1.update(b'\x00')
+        # for normal files
+        with open(file.path, 'rb') as f:
+            while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
+                file_shake_256.update(data)
+        lang = get_TSABL_for_file(file.path)
+        file.language = lang.lang if lang else None
+        file.error = "WST_NO_LANGUAGE" if not lang else None
+    elif file.mode == git.GIT_FILEMODE_LINK:
+        lang = None
+        file.language = None
+        file.error = "WST_IS_LINK"
+        # we will not parse it, instead, store the link
+        link = Path(file.path)
+        if not link.is_symlink():
+            raise LocalCopyOutOfSync(f"{file.path} is not a link but should be!")
+        target = Path(os.readlink(link))
+        file.symlink = {
+            'target': str(target),
+        }
+        abspath = link.resolve(strict=False)
+        try:
+            relpath = abspath.relative_to(Path('.').resolve())
+            file.symlink['relative'] = str(relpath)
+        except ValueError as e:
+            # link target probably not within our repo dir
+            file.symlink['relative'] = None
     else:
         raise UnhandledGitFileMode(f"{file.path} mode is {oct(file.mode)}")
-    with open(file.path, 'rb') as f:
-        while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
-            file_shake_256.update(data)
-            file_git_sha1.update(data)
-    # checking if file has been modified on disk vs git:
-    if file_git_sha1.hexdigest() != file.git_oid:
-        # we will NOT insert this file into the db if this happens
-        log.warn(f"{file.path} gitlike sha1 is {file_git_sha1.hexdigest()} while oid is {file.git_oid}")
-        log.warn(f"{file.path} mode is {oct(file.mode)}")
-        raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
-    file.content_hash = file_shake_256.hexdigest(64) # 128 hex chars
-
-    lang = get_TSABL_for_file(file.path)
-    file.language = lang.lang if lang else None
-    file.error = "WST_NO_LANGUAGE" if not lang else None
 
     try:
         file.insert_in_db(db)
@@ -143,7 +159,7 @@ def _process_file(
         if e.http_code == 409:
             # already exists: get it
             preexisting_file = WSTFile.get(db, file._key)
-            if preexisting_file.error != file.error or preexisting_file.git_oid != file.git_oid:
+            if preexisting_file != file:
                 log.debug(f"existing file: {preexisting_file}")
                 log.debug(f"new file: {file}")
                 raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has mismatched data")
