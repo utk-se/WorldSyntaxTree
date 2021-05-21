@@ -9,7 +9,7 @@ from traceback import format_exc
 from pebble import concurrent
 import enlighten
 import enlighten._manager
-enlighten._manager.RESIZE_SUPPORTED = False
+# enlighten._manager.RESIZE_SUPPORTED = False
 
 from . import log
 
