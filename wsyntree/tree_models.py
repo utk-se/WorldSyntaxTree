@@ -242,7 +242,7 @@ class WSTFile(WST_Document):
     ]
 
     def _genkey(self):
-        self._key = f"{shake256hex(self.path, 32)}-{self.content_hash}"
+        self._key = f"{shake256hex(self.path, 32)}-{oct(self.mode)}-{self.content_hash}"
         return self._key
 
 class WSTCommit(WST_Document):

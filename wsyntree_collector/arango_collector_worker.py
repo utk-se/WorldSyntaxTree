@@ -111,9 +111,11 @@ def _process_file(
     )
     # edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
 
+    _filepath = Path(file.path)
+    if _filepath.is_dir():
+        raise LocalCopyOutOfSync(f"{_filepath.resolve()} should be a file, not a directory!")
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
-    file_git_oid = str(git.hashfile(file.path)) # transforms data with header & filters
     if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
         # for normal files
         with open(file.path, 'rb') as f:
