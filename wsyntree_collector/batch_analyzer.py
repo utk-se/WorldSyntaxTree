@@ -121,7 +121,7 @@ def batch_analyze(args):
                 ret_futures.append(executor.schedule(
                     repo_worker,
                     (repo, node_q),
-                    {'workers': args.workers}
+                    {'workers': args.workers, 'database_conn': args.db}
                 ))
                 all_repos_sched_cntr.update()
             all_repos_sched_cntr.close()
