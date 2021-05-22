@@ -239,7 +239,7 @@ class WST_ArangoTreeCollector():
                     total=len(index), autorefresh=True, leave=False
                 )
                 for gobj in index:
-                    if not os.path.isfile(gobj.path):
+                    if not gobj.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE, git.GIT_FILEMODE_LINK):
                         continue
                     _file = Path(gobj.path)
                     # check size of file first:

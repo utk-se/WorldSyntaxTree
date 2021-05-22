@@ -115,12 +115,6 @@ def _process_file(
     file_shake_256 = hashlib.shake_256() # WST hashes
     file_git_oid = str(git.hashfile(file.path)) # transforms data with header & filters
     if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
-        # checking if file has been modified on disk vs git:
-        if file_git_oid != file.git_oid:
-            # we will NOT insert this file into the db if this happens
-            log.warn(f"{file.path} git oid is {file_git_oid} while expected oid is {file.git_oid}")
-            log.warn(f"{file.path} mode is {oct(file.mode)}")
-            raise LocalCopyOutOfSync(f"file {file.path} sha1 hash does not match git oid")
         # for normal files
         with open(file.path, 'rb') as f:
             while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
