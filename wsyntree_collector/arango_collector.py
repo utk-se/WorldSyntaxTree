@@ -243,7 +243,7 @@ class WST_ArangoTreeCollector():
                         continue
                     _file = Path(gobj.path)
                     # check size of file first:
-                    _fstat = _file.stat()
+                    _fstat = _file.lstat()
 
                     nf = WSTFile(
                         # _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",

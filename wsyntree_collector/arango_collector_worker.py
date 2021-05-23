@@ -111,12 +111,20 @@ def _process_file(
     )
     # edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
 
-    _filepath = Path(file.path)
-    if _filepath.is_dir():
-        raise LocalCopyOutOfSync(f"{_filepath.resolve()} should be a file, not a directory!")
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
-    if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
+    _filepath = Path(file.path)
+    if _filepath.is_dir():
+        log.error(f"{_filepath.resolve()} should be a file, not a directory!")
+        lang = None
+        file.language = None
+        file.error = "WST_IS_DIRECTORY"
+        dir_contents = [str(x) for x in _filepath.iterdir()]
+        dir_contents.sort()
+        for d in dir_contents:
+            file_shake_256.update(d.encode())
+        file.content_hash = file_shake_256.hexdigest(64)
+    elif file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
         # for normal files
         with open(file.path, 'rb') as f:
             while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
