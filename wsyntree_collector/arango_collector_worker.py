@@ -114,17 +114,7 @@ def _process_file(
     # always done for every file:
     file_shake_256 = hashlib.shake_256() # WST hashes
     _filepath = Path(file.path)
-    if _filepath.is_dir():
-        log.error(f"{_filepath.resolve()} should be a file, not a directory!")
-        lang = None
-        file.language = None
-        file.error = "WST_IS_DIRECTORY"
-        dir_contents = [str(x) for x in _filepath.iterdir()]
-        dir_contents.sort()
-        for d in dir_contents:
-            file_shake_256.update(d.encode())
-        file.content_hash = file_shake_256.hexdigest(64)
-    elif file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
+    if file.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE):
         # for normal files
         with open(file.path, 'rb') as f:
             while (data := f.read(_HASH_CHUNK_READ_SIZE_BYTES)):
@@ -138,14 +128,13 @@ def _process_file(
         file.language = None
         file.error = "WST_IS_LINK"
         # we will not parse it, instead, store the link
-        link = Path(file.path)
-        if not link.is_symlink():
+        if not _filepath.is_symlink():
             raise LocalCopyOutOfSync(f"{file.path} is not a link but should be!")
-        target = Path(os.readlink(link))
+        target = Path(os.readlink(_filepath))
         file.symlink = {
             'target': str(target),
         }
-        abspath = link.resolve(strict=False)
+        abspath = _filepath.resolve(strict=False)
         try:
             relpath = abspath.relative_to(Path('.').resolve())
             file.symlink['relative'] = str(relpath)
