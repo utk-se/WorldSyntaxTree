@@ -185,11 +185,17 @@ def _process_file(
         if e.http_code == 409:
             # already exists: check that it's the same, and if so, all done here
             preexisting_ct = WSTCodeTree.get(db, code_tree._key)
-            assert preexisting_ct == code_tree, f"constructed WSTCodeTree does not match existing, id {preexisting_ct._id}"
+            if preexisting_ct != code_tree:
+                log.debug(f"existing CodeTree: {preexisting_ct}")
+                log.debug(f"calculated CodeTree: {code_tree}")
+                raise DeduplicatedObjectMismatch(f"constructed WSTCodeTree does not match existing, id {preexisting_ct._id}")
             (file / preexisting_ct).insert_in_db(db)
             if node_q:
                 node_q.put(('dedup_stats', 'WSTCodeTree', 1))
             return file
+        else:
+            log.warn(f"Unhandled DocumentInsertError code")
+            raise e
     except Exception as e:
         log.error(f"Failed to insert WSTCodeTree into db: {code_tree}")
         raise e

@@ -16,3 +16,6 @@ class PrerequisiteStateInvalid(ValueError, WSTBaseError):
 
 class UnhandledGitFileMode(ValueError, WSTBaseError):
     pass
+
+class DeduplicatedObjectMismatch(ValueError, WSTBaseError):
+    pass
