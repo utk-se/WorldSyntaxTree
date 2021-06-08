@@ -3,26 +3,38 @@ import argparse
 from multiprocessing import Pool
 import sys
 import os
+import psutil
 from urllib.parse import urlparse
 import time
+import signal
+import traceback
 
 import pygit2 as git
 from arango import ArangoClient
+import enlighten
 
 from wsyntree import log
+from wsyntree.exceptions import *
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url, desensitize_url
-from wsyntree.tree_models import WSTRepository
+import wsyntree.tree_models as tree_models
+from wsyntree.tree_models import (
+    WSTRepository, _db_collections, _db_edgecollections, _graph_edge_definitions
+)
 
 from .arango_collector import WST_ArangoTreeCollector
+from .batch_analyzer import set_batch_analyze_args
+
 
 def analyze(args):
     collector = WST_ArangoTreeCollector(
         args.repo_url,
         workers=args.workers,
         database_conn=args.db,
+        commit_sha=args.target_commit,
     )
     collector.setup()
+    log.debug(f"Set up collector: {collector}")
 
     # check if exists already
     if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
@@ -30,7 +42,7 @@ def analyze(args):
             log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
             return
         else:
-            raise FileExistsError(f"Repo document already exists: {repo.__dict__}")
+            raise RepoExistsError(f"Repo document already exists: {repo.__dict__}")
 
     try:
         collector.collect_all()
@@ -58,41 +70,16 @@ def database_init(args):
     p = urlparse(args.db)
     odb = client.db(p.path[1:], username=p.username, password=p.password)
 
-    newdcls = ['wstfiles', 'wstrepos', 'wstnodes', 'wsttexts']
-    newecls = ['wst-fromfile', 'wst-fromrepo', 'wst-nodeparent', 'wst-nodetext']
-    _ngraphs = {
-        "wst-repo-files": {
-            "edge_collection": 'wst-fromrepo',
-            "from_vertex_collections": ['wstfiles'],
-            "to_vertex_collections": ['wstrepos'],
-        },
-        "wst-file-nodes": {
-            "edge_collection": 'wst-fromfile',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wstfiles'],
-        },
-        "wst-node-parents": {
-            "edge_collection": 'wst-nodeparent',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wstnodes'],
-        },
-        "wst-node-text": {
-            "edge_collection": 'wst-nodetext',
-            "from_vertex_collections": ['wstnodes'],
-            "to_vertex_collections": ['wsttexts'],
-        },
-    }
-
     if args.delete:
         log.warn(f"deleting all data ...")
         # deleting old stuff could take awhile
         jobs = []
         db = odb.begin_async_execution()
 
-        jobs.append(db.delete_graph('wst', ignore_missing=True))
-        for c in newdcls:
+        jobs.append(db.delete_graph(tree_models._graph_name, ignore_missing=True))
+        for c in _db_collections:
             jobs.append(db.delete_collection(c, ignore_missing=True))
-        for c in newecls:
+        for c in _db_edgecollections:
             jobs.append(db.delete_collection(c, ignore_missing=True))
 
         jt_wait = len(jobs)
@@ -111,25 +98,25 @@ def database_init(args):
     log.info(f"Creating collections ...")
 
     colls = {}
-    for cn in newdcls:
+    for cn in _db_collections:
         if db.has_collection(cn):
             colls[cn] = db.collection(cn)
         else:
             colls[cn] = db.create_collection(cn, user_keys=True)
-    for cn in newecls:
+    for cn in _db_edgecollections:
         if db.has_collection(cn):
             colls[cn] = db.collection(cn)
         else:
             colls[cn] = db.create_collection(cn, user_keys=True, edge=True)
 
     graph = None
-    if not db.has_graph('wst'):
-        graph = db.create_graph('wst')
+    if not db.has_graph(tree_models._graph_name):
+        graph = db.create_graph(tree_models._graph_name)
     else:
-        graph = db.graph('wst')
+        graph = db.graph(tree_models._graph_name)
     edgedefs = {}
 
-    for gk, gv in _ngraphs.items():
+    for gk, gv in _graph_edge_definitions.items():
         if not graph.has_edge_definition(gv['edge_collection']):
             log.debug(f"Added graph edges {gv}")
             edgedefs[gk] = graph.create_edge_definition(**gv)
@@ -147,6 +134,9 @@ def __main__():
         "-v", "--verbose",
         help="Increase output verbosity",
         action="store_true"
+    )
+    parser.set_defaults(
+        en_manager=enlighten.get_manager()
     )
     subcmds = parser.add_subparsers(
         title="Collector commands"
@@ -172,6 +162,18 @@ def __main__():
         action="store_true",
         help="Skip the analysis if the repo document already exists in the database"
     )
+    cmd_analyze.add_argument(
+        "-t", "--target-commit",
+        type=str,
+        help="Checkout and analyze a specific commit from the repo",
+        default=None
+    )
+    # batch analysis
+    cmd_batch = subcmds.add_parser(
+        'batch', aliases=['addbatch', 'addmulti'],
+        help="Analyze multiple repos from a JSON specification list"
+    )
+    set_batch_analyze_args(cmd_batch)
     # delete data selectively
     cmd_delete = subcmds.add_parser(
         'delete', aliases=['del'], help="Delete tree data selectively")
@@ -205,7 +207,20 @@ def __main__():
         log.warn(f"Please supply a valid subcommand!")
         return
 
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt as e:
+        log.warn(f"Stopping all child processes...")
+        cur_proc = psutil.Process()
+        children = cur_proc.children(recursive=True)
+        for c in children:
+            os.kill(c.pid, signal.SIGINT)
+        psutil.wait_procs(children, timeout=5)
+        children = cur_proc.children(recursive=True)
+        for c in children:
+            c.terminate()
+        raise e
 
 if __name__ == '__main__':
+    os.setpgrp()
     __main__()

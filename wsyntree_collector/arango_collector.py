@@ -1,5 +1,6 @@
 
 import functools
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -9,12 +10,14 @@ import concurrent.futures as futures
 import os
 import time
 
+import arango.exceptions
 from arango import ArangoClient
 import pygit2 as git
-from tqdm import tqdm
 from pebble import ProcessPool, ThreadPool
+import enlighten
 
-from wsyntree import log, tree_models
+from wsyntree import log, tree_models, multiprogress
+from wsyntree.exceptions import *
 from wsyntree.tree_models import * # __all__
 from wsyntree.localstorage import LocalCache
 from wsyntree.utils import (
@@ -31,12 +34,22 @@ class WST_ArangoTreeCollector():
             database_conn: str = "http://wst:wst@localhost:8529/wst",
             workers: int = None,
             commit_sha: str = None,
+            en_manager = None,
         ):
         """
         database_conn: Full URI including user:password@host:port/database
+        commit_sha: full sha1 hex commit, optional, if present will checkout
+        workers: number of file processes in parallel
         """
         self.repo_url = repo_url
         self.database_conn_str = database_conn
+
+        multiprogress.setup_if_needed()
+        self.en_manager = en_manager or multiprogress.get_manager()
+        if multiprogress.is_proxy(en_manager):
+            self.en_manager_proxy = en_manager
+        else:
+            self.en_manager_proxy = multiprogress.get_manager_proxy()
 
         pr = urlparse(self.repo_url)
         self._url_scheme = pr.scheme
@@ -89,7 +102,7 @@ class WST_ArangoTreeCollector():
         repodir = self._local_repo_path
         if not (repodir / '.git').exists():
             repodir.mkdir(mode=0o770, parents=True, exist_ok=True)
-            log.debug(f"cloning repo to {repodir} ...")
+            log.info(f"cloning repo to {repodir} ...")
             return git.clone_repository(
                 self.repo_url,
                 repodir.resolve()
@@ -100,10 +113,23 @@ class WST_ArangoTreeCollector():
             )
             return git.Repository(repopath)
 
+    @property
+    def _current_commit(self) -> git.Commit:
+        try:
+            return self._get_git_repo().revparse_single('HEAD')
+        except KeyError as e:
+            log.error(f"repo in {self._local_repo_path} might not have HEAD?")
+
+    @property
+    def _current_commit_hash(self) -> str:
+        return self._current_commit.hex
+
     ### NOTE immutable properties
 
     def __repr__(self):
-        return f"WST_ArangoTreeCollector<{self.repo_url}@{self._current_commit_hash}>"
+        repo_url = str(self.repo_url)
+        hash = str(self._current_commit_hash)
+        return f"WST_ArangoTreeCollector<{repo_url}@{hash}>"
     __str__ = __repr__
 
     @functools.cached_property
@@ -114,18 +140,13 @@ class WST_ArangoTreeCollector():
             log.debug(f"created dir {cachedir}")
         return cachedir.joinpath(self._url_path)
 
-    @functools.cached_property
-    def _current_commit_hash(self) -> str:
-        try:
-            return self._get_git_repo().revparse_single('HEAD').hex
-        except KeyError as e:
-            log.error(f"repo in {self._local_repo_path} might not have HEAD?")
-            raise e
-
     ### NOTE public control functions
 
     def delete_all_tree_data(self):
         """Delete all data in the tree associated with this repo object"""
+
+        raise NotImplementedError(f"Deletion not updated to support new tree structure.")
+
         if not self._db:
             self._connect_db()
         if not self._tree_repo:
@@ -161,80 +182,99 @@ class WST_ArangoTreeCollector():
         log.info(f"Deleted repo {self._tree_repo.url} @ {self._tree_repo.commit}")
         self._tree_repo = None
 
-    def collect_all(self):
+    def collect_all(self, existing_node_q = None):
         """Creates every node down the tree for this repo"""
         # create the main Repos
-        nr = WSTRepository(
-            _key=self._current_commit_hash,
+        self._tree_repo = WSTRepository(
             type='git',
             url=self.repo_url,
-            commit=self._current_commit_hash,
             path=self._url_path,
             analyzed_time=int(time.time()),
             wst_status="started",
         )
-        self._tree_repo = nr
         # self._coll['wstrepos'].insert(nr.__dict__)
-        nr.insert_in_db(self._db)
+        try:
+            self._tree_repo.insert_in_db(self._db)
+        except arango.exceptions.DocumentInsertError as e:
+            if e.http_code == 409:
+                existing_repo = WSTRepository.get(self._db, self._tree_repo._key)
+                raise RepoExistsError(f"Already present: {existing_repo}")
+            else:
+                raise e
+
+        # attempt to find an existing commit in the db:
+        if not (commit := WSTCommit.get(self._db, self._current_commit_hash)):
+            _cc = self._current_commit
+            self._wst_commit = WSTCommit(
+                _key=_cc.hex,
+                commit_time=_cc.commit_time,
+                commit_time_offset=_cc.commit_time_offset,
+                parent_ids=[str(i) for i in _cc.parent_ids],
+                tree_id=str(_cc.tree_id),
+            )
+            log.debug(f"Inserting {self._wst_commit}")
+            self._wst_commit.insert_in_db(self._db)
+        else:
+            self._wst_commit = commit
+        rel_repo_commit = self._tree_repo / self._wst_commit
+        rel_repo_commit.insert_in_db(self._db)
+
+        index = self._get_git_repo().index
+        index.read()
 
         # file-level processing
-        files = []
-        if self._worker_count == 1:
-            with pushd(self._local_repo_path):
-                index = self._get_git_repo().index
-                index.read()
-                for gobj in tqdm(index, desc="scanning git"):
-                    if not os.path.isfile(gobj.path):
-                        continue
-                    nf = WSTFile(
-                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
-                        path=gobj.path,
-                        oid=gobj.hex,
-                    )
-                    files.append(nf)
-                log.info(f"{len(files)} to process")
-                for file in files:
-                    try:
-                        r = process_file(file, self._tree_repo, self.database_conn_str)
-                        log.debug(f"{file.path} processing done: {r}")
-                    except Exception as e:
-                        log.err(f"during {file.path}, document {file._key}")
-                        raise e
-                self._tree_repo.wst_status = "completed"
-                self._tree_repo.update_in_db(self._db)
-                return
+        # files = []
         with pushd(self._local_repo_path), Manager() as self._mp_manager:
-            self._node_queue = self._mp_manager.Queue()
-            node_receiver = _tqdm_node_receiver(self._node_queue)
+            if not existing_node_q:
+                self._node_queue = self._mp_manager.Queue()
+                node_receiver = _tqdm_node_receiver(self._node_queue, self.en_manager_proxy)
+            else:
+                self._node_queue = existing_node_q
             with ProcessPool(max_workers=self._worker_count) as executor:
                 self._stoppable = executor
                 log.info(f"scanning git for files ...")
                 ret_futures = []
-                index = self._get_git_repo().index
-                index.read()
-                for gobj in tqdm(index):
-                    if not os.path.isfile(gobj.path):
+                cntr_add_jobs = self.en_manager.counter(
+                    desc=f"scanning files for {self._url_path}",
+                    total=len(index), autorefresh=True, leave=False
+                )
+                for gobj in index:
+                    if not gobj.mode in (git.GIT_FILEMODE_BLOB, git.GIT_FILEMODE_BLOB_EXECUTABLE, git.GIT_FILEMODE_LINK):
                         continue
+                    _file = Path(gobj.path)
+                    # check size of file first:
+                    _fstat = _file.lstat()
+
                     nf = WSTFile(
-                        _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
+                        # _key=f"{nr.commit}-{gobj.hex}-{sha1hex(gobj.path)}",
                         path=gobj.path,
-                        oid=gobj.hex,
+                        mode=gobj.mode,
+                        size=_fstat.st_size,
+                        git_oid=gobj.hex,
                     )
                     # file_paths.append(p)
                     ret_futures.append(executor.schedule(
                         process_file,
-                        (nf, self._tree_repo, self.database_conn_str),
-                        {'node_q': self._node_queue}
+                        (nf, self._wst_commit, self.database_conn_str),
+                        {'node_q': self._node_queue, 'en_manager': self.en_manager_proxy}
                     ))
+                    cntr_add_jobs.update()
+                cntr_add_jobs.close(clear=True)
                 log.info(f"processing files with {self._worker_count} workers ...")
                 try:
-                    for r in tqdm(futures.as_completed(ret_futures), total=len(ret_futures), desc="processing files"):
-                        nf = r.result()
-                        # s = str(nf)
+                    cntr_files_processed = self.en_manager.counter(
+                        desc=f"processing {self._url_path}",
+                        total=len(ret_futures), unit="files",
+                        leave=False, autorefresh=True
+                    )
+                    for r in futures.as_completed(ret_futures):
+                        completed_file = r.result()
                         # log.debug(f"result {nf}")
+                        cntr_files_processed.update()
                     # after all results returned
                     self._tree_repo.wst_status = "completed"
                     self._tree_repo.update_in_db(self._db)
+                    log.info(f"{self._url_path} marked completed.")
                 except KeyboardInterrupt as e:
                     log.warn(f"stopping collection ...")
                     for rf in ret_futures:
@@ -245,17 +285,42 @@ class WST_ArangoTreeCollector():
                     # raise e
                     self._tree_repo.wst_status = "cancelled"
                     self._tree_repo.update_in_db(self._db)
+                    log.info(f"{self._tree_repo.url} wst_status marked as cancelled")
                 except Exception as e:
                     self._tree_repo.wst_status = "error"
                     self._tree_repo.update_in_db(self._db)
                     raise e
                 finally:
-                    self._node_queue.put(None)
-            self._node_queue.put(None)
-            receiver_exit = node_receiver.result(timeout=3)
+                    cntr_files_processed.close()
+                    if not existing_node_q:
+                        self._node_queue.put(None)
+            if not existing_node_q:
+                self._node_queue.put(None)
+                receiver_exit = node_receiver.result(timeout=3)
 
     def setup(self):
         """Clone the repo, connect to the DB, create working directories, etc."""
         self._connect_db()
-        self._get_git_repo()
-        # TODO checkout self._target_commit
+        repo = self._get_git_repo()
+        if self._current_commit is None:
+            log.warn(f"Deleting and re-cloning repo in {self._local_repo_path}")
+            try:
+                shutil.rmtree(self._local_repo_path)
+                repo = self._get_git_repo()
+            except Exception as e:
+                log.error(f"Failed to repair repository: {type(e)}: {e}")
+                raise e
+        # to _target_commit if set
+        if self._target_commit and self._target_commit != self._current_commit_hash:
+            log.info(f"Checking out commit {self._target_commit}...")
+            try:
+                commit = repo.get(self._target_commit)
+                log.debug(f"target commit {commit}")
+                # commit might not exist for a variety of reasons (need to fetch, DNE, corrupt, etc)
+                repo.checkout_tree(commit.tree)
+                repo.head.set_target(commit.id)
+            except Exception as e:
+                raise e
+            log.info(f"Repo at {self._local_repo_path} now at {self._current_commit_hash}")
+        elif self._target_commit and self._target_commit == self._current_commit_hash:
+            log.debug(f"Repo in {self._local_repo_path} is already at {self._target_commit}")

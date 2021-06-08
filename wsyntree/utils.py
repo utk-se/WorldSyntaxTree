@@ -5,6 +5,7 @@ from pathlib import Path
 import contextlib
 import hashlib
 from urllib.parse import urlparse
+from typing import Union
 
 import pygit2 as git
 
@@ -80,3 +81,14 @@ def sha1hex(s: str) -> str:
 
 def sha512hex(b: bytes) -> str:
     return hashlib.sha512(b).hexdigest()
+
+def shake256hex(b: Union[bytes,str], length: int) -> str:
+    """
+    length: half of the number of hex characters you want (number of bytes)
+    """
+    if isinstance(b, bytes):
+        return hashlib.shake_256(b).hexdigest(length)
+    elif isinstance(b, str):
+        return hashlib.shake_256(b.encode()).hexdigest(length)
+    else:
+        raise TypeError(f"not sure how to hash {type(b)}")

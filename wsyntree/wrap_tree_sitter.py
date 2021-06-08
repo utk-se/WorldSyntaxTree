@@ -54,17 +54,23 @@ class TreeSitterAutoBuiltLanguage():
 
     def _get_language_library(self):
         try:
-            self.ts_lang_cache_lock.acquire(timeout=30)
+            self.ts_lang_cache_lock.acquire(timeout=300)
             lib = self._get_language_cache_dir() / "language.so"
             repo = self._get_language_repo()
             repodir = self._get_language_repo_path()
             if not lib.exists():
-                log.debug(f"building library for {self}")
+                log.warn(f"building library for {self}, this could take a while...")
+                start = time.time()
                 Language.build_library(
                     str(lib.resolve()),
                     [repodir]
                 )
+                log.debug(f"library build of {self} completed after {round(time.time() - start)} seconds")
             return lib
+        except filelock.Timeout as e:
+            log.error(f"Failed to acquire lock on TSABL {self}")
+            log.debug(f"lock object is {self.ts_lang_cache_lock}")
+            raise e
         finally:
             self.ts_lang_cache_lock.release()
 
