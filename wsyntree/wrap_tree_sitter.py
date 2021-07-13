@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import AnyStr, Callable
 import functools
 import re
+import time
 
 import pebble
 from tree_sitter import Language, Parser, TreeCursor, Node
