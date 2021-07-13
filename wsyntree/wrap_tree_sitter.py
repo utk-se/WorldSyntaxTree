@@ -7,7 +7,8 @@ import re
 import pebble
 from tree_sitter import Language, Parser, TreeCursor, Node
 import pygit2 as git
-from filelock import FileLock, Timeout
+import filelock
+from filelock import FileLock
 
 from . import log
 from .localstorage import LocalCache
