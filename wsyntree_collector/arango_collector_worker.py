@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from contextlib import nullcontext
 import functools
 import hashlib
+import traceback
 
 import pygit2 as git
 import arango.exceptions
@@ -74,6 +75,7 @@ def process_file(*args, **kwargs):
         return _process_file(*args, **kwargs)
     except Exception as e:
         log.err(f"process_file error: {type(e)}: {e}")
+        log.trace(log.debug, traceback.format_exc())
         raise e
 
 def _process_file(
