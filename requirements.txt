@@ -6,3 +6,4 @@ tqdm
 Pebble
 enlighten==1.9.0
 psutil
+tenacity

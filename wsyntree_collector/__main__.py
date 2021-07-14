@@ -37,15 +37,21 @@ def analyze(args):
     log.debug(f"Set up collector: {collector}")
 
     # check if exists already
-    if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
+    # if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
+    #     if args.skip_exists:
+    #         log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
+    #         return
+    #     else:
+    #         raise RepoExistsError(f"Repo document already exists: {repo.__dict__}")
+
+    try:
+        collector.collect_all()
+    except RepoExistsError as e:
         if args.skip_exists:
             log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
             return
         else:
-            raise RepoExistsError(f"Repo document already exists: {repo.__dict__}")
-
-    try:
-        collector.collect_all()
+            raise
     except Exception as e:
         log.crit(f"{collector} run failed.")
         raise e

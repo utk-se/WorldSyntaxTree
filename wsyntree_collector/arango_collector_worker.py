@@ -14,6 +14,10 @@ from arango import ArangoClient
 import enlighten
 from pebble import concurrent
 import cachetools.func
+from tenacity import retry
+# from tenacity.stop import stop_after_attempt
+# from tenacity.wait import wait_random
+# from tenacity.retry import retry_if_exception_type
 
 from wsyntree import log, tree_models
 from wsyntree.exceptions import *
@@ -182,7 +186,7 @@ def _process_file(
         error=None,
     )
     try:
-        code_tree.insert_in_db(db)
+        auto_writewrite_retry(lambda: code_tree.insert_in_db(db))()
     except arango.exceptions.DocumentInsertError as e:
         if e.http_code == 409:
             # already exists: check that it's the same, and if so, all done here

@@ -35,6 +35,7 @@ setup(
         "tqdm",
         "Pebble",
         "filelock",
+        "tenacity",
         "cachetools",
         "enlighten",
         "psutil",
