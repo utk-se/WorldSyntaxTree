@@ -3,10 +3,14 @@ from itertools import chain
 from typing import Union
 from json import JSONEncoder
 
+from arango.job import AsyncJob
 from arango.database import StandardDatabase, BatchDatabase
+import tenacity
+from tenacity.retry import retry_if_exception
 
 from . import log
 from .utils import dotdict, shake256hex
+from .exceptions import *
 
 __all__ = [
     'WSTRepository', 'WSTCommit', 'WSTFile',
@@ -29,7 +33,11 @@ class WST_Document():
         Returns None if document by key does not exist.
         """
         collection = db.collection(cls._collection)
-        document = collection.get(key)
+        res = collection.get(key)
+        if collection.context == "async":
+            document = auto_asyncjobdone_retry(lambda: res.result())()
+        else:
+            document = res
         return cls(**document) if document is not None else None
 
     def __init__(self, *args, **kwargs):
@@ -82,17 +90,38 @@ class WST_Document():
         self._key = self._keyfmt.format(self)
         return self._key
 
-    def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
+    @auto_writewrite_retry
+    def insert_in_db(
+            self,
+            db: Union[StandardDatabase, BatchDatabase],
+            wait_if_async: bool = True,
+            **insert_kwargs,
+        ):
         """Insert this document into a db"""
         if not hasattr(self, '_key') or not self._key:
             self._genkey()
         coll = db.collection(self._collection)
-        return coll.insert(self.__dict__)
+        res = coll.insert(self.__dict__, **insert_kwargs)
+        if coll.context == "async" and wait_if_async:
+            # wait for the async result and return that or error
+            return auto_asyncjobdone_retry(lambda: res.result())()
+        else:
+            return res
 
-    def update_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
+    def update_in_db(
+            self,
+            db: Union[StandardDatabase, BatchDatabase],
+            wait_if_async: bool = True,
+            **update_kwargs
+        ):
         assert self._key, '_key must already be set in order to update the document'
         coll = db.collection(self._collection)
-        return coll.update(self.__dict__)
+        res = coll.update(self.__dict__, **update_kwargs)
+        if coll.context == "async" and wait_if_async:
+            # wait for the async result and return that or error
+            return auto_asyncjobdone_retry(lambda: res.result())()
+        else:
+            return res
 
     def _make_edge(self, rhs):
         """
@@ -153,7 +182,7 @@ class WST_Edge(dict):
 ### DOCUMENT TYPES
 # NOTE
 # please try to keep all _key values constant length if possible
-# notable exceptions include gaurantees like WST `language` names length
+# notable exceptions include guarantees like WST `language` names length
 
 class WSTText(WST_Document):
     _collection = "wst_texts"
@@ -167,7 +196,7 @@ class WSTText(WST_Document):
         self._key = f"{self.length}-{shake256hex(self.text.encode(), 64)}"
         return self._key
 
-    def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase]):
+    def insert_in_db(self, db: Union[StandardDatabase, BatchDatabase], **kwargs):
         """WSTTexts might be duplicate
 
         We prevent errors during insert if the document already exists:
@@ -175,8 +204,7 @@ class WSTText(WST_Document):
         thus we will never lose data with overwrite
         """
         assert self._key
-        coll = db.collection(self._collection)
-        return coll.insert(self.__dict__, overwrite_mode="replace")
+        super().insert_in_db(db, overwrite_mode="replace", **kwargs)
 
 class WSTNode(WST_Document):
     """A single node in the Abstract or Concrete syntax tree

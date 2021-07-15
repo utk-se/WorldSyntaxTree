@@ -9,6 +9,7 @@ import hashlib
 import traceback
 
 import pygit2 as git
+from arango.database import StandardDatabase, BatchDatabase
 import arango.exceptions
 from arango import ArangoClient
 import enlighten
@@ -69,7 +70,7 @@ def _tqdm_node_receiver(q, en_manager):
         log.err(f"node_receiver failed: {e}")
         raise e
 
-def batch_insert_WSTNode(db, stuff_to_insert):
+def batch_insert_WSTNode(db: StandardDatabase, stuff_to_insert):
     with db.begin_batch_execution() as bdb:
         for thing in stuff_to_insert:
             thing.insert_in_db(bdb)
@@ -110,11 +111,12 @@ def _process_file(
     client = client = ArangoClient(
         hosts=strip_url(database_conn_str),
     )
-    db = client.db(
+    sync_db = client.db(
         _db_database,
         username=_db_username,
         password=_db_password,
     )
+    db = sync_db.begin_async_execution(return_result=True)
     # edge_fromrepo = db.graph(tree_models._graph_name).edge_collection('wst-fromrepo')
 
     # always done for every file:
@@ -186,7 +188,7 @@ def _process_file(
         error=None,
     )
     try:
-        auto_writewrite_retry(lambda: code_tree.insert_in_db(db))()
+        code_tree.insert_in_db(db)
     except arango.exceptions.DocumentInsertError as e:
         if e.http_code == 409:
             # already exists: check that it's the same, and if so, all done here
@@ -273,7 +275,7 @@ def _process_file(
 
             if len(batch_writes) >= batch_write_size:
                 # log.debug(f"batch insert {len(batch_writes)}...")
-                batch_insert_WSTNode(db, batch_writes)
+                batch_insert_WSTNode(sync_db, batch_writes)
                 # progress reporting: desired to evaluate node insertion performance
                 if node_q:
                     node_q.put(len(batch_writes))
@@ -302,7 +304,7 @@ def _process_file(
                     if len(parent_stack) != 0:
                         log.err(f"Bad tree iteration detected! Recorded more parents than ascended.")
                     if batch_writes:
-                        batch_insert_WSTNode(db, batch_writes)
+                        batch_insert_WSTNode(sync_db, batch_writes)
                         if node_q:
                             node_q.put(len(batch_writes))
                     # NOTE sucessful end of processing
