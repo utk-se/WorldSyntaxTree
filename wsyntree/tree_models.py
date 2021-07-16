@@ -216,6 +216,14 @@ class WST_Edge(dict):
         self["_from"] = f"{self._from_collection}/{self._from_key}"
         self["_to"] = f"{self._to_collection}/{self._to_key}"
 
+    @property
+    def _collection(self):
+        return self._edge_collection
+
+    @property
+    def __dict__(self):
+        return self
+
     def insert_in_db(self, db, wait_if_async=True, overwrite: bool = False):
         """Uses the graph API!"""
         graph = db.graph(_graph_name)
