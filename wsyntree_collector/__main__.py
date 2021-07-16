@@ -1,5 +1,6 @@
 
 import argparse
+import multiprocessing
 from multiprocessing import Pool
 import sys
 import os
@@ -14,7 +15,7 @@ from arango import ArangoClient
 import enlighten
 import bpdb
 
-from wsyntree import log
+from wsyntree import log, multiprogress
 from wsyntree.exceptions import *
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 from wsyntree.utils import strip_url, desensitize_url
@@ -23,35 +24,54 @@ from wsyntree.tree_models import (
     WSTRepository, _db_collections, _db_edgecollections, _graph_edge_definitions
 )
 
+from .jsonl_writer import WST_FileExporter, write_from_queue
 from .arango_collector import WST_ArangoTreeCollector
+from .jsonl_collector import WST_JSONLCollector
 from .batch_analyzer import set_batch_analyze_args
 
 
 def analyze(args):
-    collector = WST_ArangoTreeCollector(
-        args.repo_url,
-        workers=args.workers,
-        database_conn=args.db,
-        commit_sha=args.target_commit,
-    )
-    collector.setup()
-    log.debug(f"Set up collector: {collector}")
 
-    if args.interactive_debug:
-        log.warn("Starting debugging:")
-        bpdb.set_trace()
+    pr = urlparse(args.repo_url)
+    output_path = f"output/{pr.path[1:]}"
 
-    try:
-        collector.collect_all(overwrite_incomplete=args.overwrite_incomplete)
-    except RepoExistsError as e:
-        if args.skip_exists:
-            log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
-            return
-        else:
-            raise
-    except Exception as e:
-        log.crit(f"{collector} run failed.")
-        raise e
+    multiprogress.main_proc_setup()
+    multiprogress.start_server_thread()
+    en_manager_proxy = multiprogress.get_manager_proxy()
+    en_manager = multiprogress.get_manager()
+
+    with multiprocessing.Manager() as mp_manager:
+        export_q = mp_manager.Queue(20000)
+        # exporter = WST_FileExporter(output_path, delete_existing=True)
+        export_proc = write_from_queue(export_q, en_manager_proxy, output_path, delete_existing=True)
+        collector = WST_JSONLCollector(
+            args.repo_url,
+            export_q=export_q,
+            workers=args.workers,
+            commit_sha=args.target_commit,
+            en_manager=en_manager,
+        )
+        collector.setup()
+        log.debug(f"Set up collector: {collector}")
+
+        if args.interactive_debug:
+            log.warn("Starting debugging:")
+            bpdb.set_trace()
+
+        try:
+            collector.collect_all(overwrite_incomplete=args.overwrite_incomplete)
+        except RepoExistsError as e:
+            if args.skip_exists:
+                log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
+                return
+            else:
+                raise
+        except Exception as e:
+            log.crit(f"{collector} run failed.")
+            raise e
+        finally:
+            export_q.put(None)
+            export_proc.result()
 
 def delete(args):
     if '/' in args.which_repo:
