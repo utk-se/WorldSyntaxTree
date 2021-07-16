@@ -6,6 +6,7 @@ from tenacity.retry import retry_if_exception
 from arango.exceptions import (
     DocumentInsertError as ArangoDocumentInsertError,
     AsyncJobResultError as ArangoAsyncJobResultError,
+    BatchJobResultError as ArangoBatchJobResultError,
 )
 import arango.errno
 
@@ -44,6 +45,13 @@ def isArangoAsyncJobNotDone(e: ArangoAsyncJobResultError) -> bool:
             return True
     return False
 
+def isArangoBatchJobNotDone(e: ArangoBatchJobResultError) -> bool:
+    """Is an AsyncJobResultError because the job is not yet done?"""
+    if isinstance(e, ArangoBatchJobResultError):
+        if e.http_code == 204:
+            return True
+    return False
+
 def auto_writewrite_retry(f: Callable) -> Callable:
     """Decorator to apply Arango Write-Write conflict retry preset"""
     return tenacity.retry(
@@ -66,5 +74,18 @@ def auto_asyncjobdone_retry(f: Callable) -> Callable:
             max=5, # check at least every N seconds
         ),
         retry=retry_if_exception(isArangoAsyncJobNotDone),
+        reraise=True,
+    )(f)
+
+def auto_batchjobdone_retry(f: Callable) -> Callable:
+    return tenacity.retry(
+        # a 30-minute timeout should be plenty in case the database
+        # decides to do a checkpoint in the middle of a batch run
+        stop=tenacity.stop.stop_after_delay(1800),
+        wait=tenacity.wait.wait_random_exponential(
+            multiplier=0.01,
+            max=5, # check at least every N seconds
+        ),
+        retry=retry_if_exception(isArangoBatchJobNotDone),
         reraise=True,
     )(f)

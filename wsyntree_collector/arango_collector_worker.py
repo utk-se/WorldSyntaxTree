@@ -71,9 +71,21 @@ def _tqdm_node_receiver(q, en_manager):
         raise e
 
 def batch_insert_WSTNode(db: StandardDatabase, stuff_to_insert):
+    jobs_n_things = []
     with db.begin_batch_execution() as bdb:
         for thing in stuff_to_insert:
-            thing.insert_in_db(bdb)
+            job = thing.insert_in_db(bdb)
+            jobs_n_things.append((job, thing))
+    # checking results in case they raise errors
+    adb = db.begin_async_execution(return_result=True)
+    for job, thing in jobs_n_things:
+        try:
+            result = auto_batchjobdone_retry(lambda: job.result())()
+        except arango.exceptions.DocumentInsertError as e:
+            if isArangoWriteWriteConflict(e):
+                auto_writewrite_retry(lambda: thing.insert_in_db(adb))
+            else:
+                raise
 
 def process_file(*args, **kwargs):
     try:
@@ -194,6 +206,7 @@ def _process_file(
         git_oid=file.git_oid,
         error=None,
     )
+    # TODO don't step on another WST_CODETREE_UNFINISHED's feet
     try:
         code_tree.insert_in_db(db)
         (file / code_tree).insert_in_db(db)
@@ -224,6 +237,10 @@ def _process_file(
     except Exception as e:
         log.error(f"Failed to insert WSTCodeTree into db: {code_tree}")
         raise e
+
+    # set in case we get interrupted HARD, without a chance to record the error
+    code_tree.error = "WST_CODETREE_UNFINISHED"
+    code_tree.update_in_db(db)
 
     tree = lang.parse_file(file.path)
 
@@ -321,7 +338,7 @@ def _process_file(
                         batch_insert_WSTNode(sync_db, batch_writes)
                         if node_q:
                             node_q.put(len(batch_writes))
-                    # NOTE sucessful end of processing
+                    # NOTE successful end of processing
                     # log.debug(f"{file.path} added {preorder} nodes")
                     if node_q:
                         node_q.put((
@@ -331,7 +348,10 @@ def _process_file(
                                 "text_lfu_miss": memoiz_stats[1],
                             }
                         ))
-                    return file # end process
+                    # unset error: CodeTree is completed successfully
+                    code_tree.error = None
+                    code_tree.update_in_db(db)
+                    return file # end process / everything went smoothly
     except BrokenPipeError as e:
         log.warn(f"caught {type(e)}: {e}")
         os._exit(1)
