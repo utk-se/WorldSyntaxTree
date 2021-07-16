@@ -91,6 +91,7 @@ def _process_file(
         node_q = None,
         en_manager = None,
         batch_write_size=1000,
+        overwrite_errored_docs=True,
     ):
     """Given an incomplete WSTFile,
     Creates a WSTCodeTree, WSTNodes, and WSTTexts for it
@@ -164,11 +165,17 @@ def _process_file(
             if preexisting_file != file:
                 log.debug(f"existing file: {preexisting_file}")
                 log.debug(f"new file: {file}")
-                raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has mismatched data")
-            (wst_commit / preexisting_file).insert_in_db(db)
-            if node_q:
-                node_q.put(('dedup_stats', 'WSTFile', 1))
-            return preexisting_file
+                if overwrite_errored_docs and preexisting_file.error:
+                    log.warn(f"Overwriting errored WSTFile, prior error: {preexisting_file.error}, new error: {file.error}")
+                    file.update_in_db(db)
+                    (wst_commit / file).insert_in_db(db, overwrite=True) # commit -> file
+                else:
+                    raise PrerequisiteStateInvalid(f"WSTFile {file._key} already exists but has mismatched data")
+            else: # WSTFiles are equivalent, dedup
+                (wst_commit / preexisting_file).insert_in_db(db, overwrite=overwrite_errored_docs)
+                if node_q:
+                    node_q.put(('dedup_stats', 'WSTFile', 1))
+                return preexisting_file
         else:
             raise e
     except Exception as e:
@@ -189,6 +196,7 @@ def _process_file(
     )
     try:
         code_tree.insert_in_db(db)
+        (file / code_tree).insert_in_db(db)
     except arango.exceptions.DocumentInsertError as e:
         if e.http_code == 409:
             # already exists: check that it's the same, and if so, all done here
@@ -196,18 +204,26 @@ def _process_file(
             if preexisting_ct != code_tree:
                 log.debug(f"existing CodeTree: {preexisting_ct}")
                 log.debug(f"calculated CodeTree: {code_tree}")
-                raise DeduplicatedObjectMismatch(f"constructed WSTCodeTree does not match existing, id {preexisting_ct._id}")
-            (file / preexisting_ct).insert_in_db(db)
-            if node_q:
-                node_q.put(('dedup_stats', 'WSTCodeTree', 1))
-            return file
+                if overwrite_errored_docs and preexisting_ct.error:
+                    log.warn(f"Overwriting errored WSTCodeTree, prior error: {preexisting_ct.error}, new error: {preexisting_ct.error}")
+                    code_tree.update_in_db(db)
+                    (file / code_tree).insert_in_db(db, overwrite=True) # file -> CT
+                    # # need to remove potential previous root-node from CT
+                    # if prior_rootnode := next(code_tree.get_children(db, WSTNode), None):
+                    #     (code_tree / prior_rootnode).delete_in_db(db)
+                else:
+                    raise DeduplicatedObjectMismatch(f"constructed WSTCodeTree does not match existing, id {preexisting_ct._id}")
+            else: # WSTCodeTrees are equivalent
+                (file / preexisting_ct).insert_in_db(db)
+                if node_q:
+                    node_q.put(('dedup_stats', 'WSTCodeTree', 1))
+                return file
         else:
             log.warn(f"Unhandled DocumentInsertError code")
             raise e
     except Exception as e:
         log.error(f"Failed to insert WSTCodeTree into db: {code_tree}")
         raise e
-    (file / code_tree).insert_in_db(db)
 
     tree = lang.parse_file(file.path)
 
@@ -249,11 +265,9 @@ def _process_file(
             # nn.insert_in_db(bdb)
             batch_writes.append(nn)
             order_to_id[nn.preorder] = nn._id
-            # edge_fromfile.insert(nn / file)
-            # batch_writes.append(nn / file)
             if parentorder is not None:
-                # edge_nodeparent.insert(nn / order_to_id[parentorder])
-                batch_writes.append(nn / order_to_id[parentorder])
+                # parent node -> child
+                batch_writes.append(WST_Edge(order_to_id[parentorder], nn))
             else:
                 # if it is none, this is the root node, link it
                 batch_writes.append(code_tree / nn)

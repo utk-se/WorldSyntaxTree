@@ -12,6 +12,7 @@ import traceback
 import pygit2 as git
 from arango import ArangoClient
 import enlighten
+import bpdb
 
 from wsyntree import log
 from wsyntree.exceptions import *
@@ -36,16 +37,12 @@ def analyze(args):
     collector.setup()
     log.debug(f"Set up collector: {collector}")
 
-    # check if exists already
-    # if repo := WSTRepository.get(collector._db, collector._current_commit_hash):
-    #     if args.skip_exists:
-    #         log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
-    #         return
-    #     else:
-    #         raise RepoExistsError(f"Repo document already exists: {repo.__dict__}")
+    if args.interactive_debug:
+        log.warn("Starting debugging:")
+        bpdb.set_trace()
 
     try:
-        collector.collect_all()
+        collector.collect_all(overwrite_incomplete=args.overwrite_incomplete)
     except RepoExistsError as e:
         if args.skip_exists:
             log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
@@ -167,6 +164,16 @@ def __main__():
         "--skip-exists", "--skip-existing",
         action="store_true",
         help="Skip the analysis if the repo document already exists in the database"
+    )
+    cmd_analyze.add_argument(
+        "--interactive-debug",
+        action="store_true",
+        help="Start the interactive debugger after repo setup"
+    )
+    cmd_analyze.add_argument(
+        "--overwrite-incomplete",
+        action="store_true",
+        help="Overwrite existing but incomplete / unfinished data in the DB"
     )
     cmd_analyze.add_argument(
         "-t", "--target-commit",

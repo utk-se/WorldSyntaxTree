@@ -145,44 +145,46 @@ class WST_ArangoTreeCollector():
     def delete_all_tree_data(self):
         """Delete all data in the tree associated with this repo object"""
 
-        raise NotImplementedError(f"Deletion not updated to support new tree structure.")
+        raise NotImplementedError(f"Deletion not supported with new tree structure.")
+        # eventually we'll figure out the best way to delete while preseving
+        # deduplication of the objects
 
-        if not self._db:
-            self._connect_db()
-        if not self._tree_repo:
-            log.info(f"Attempting to fetch WSTRepository document from db...")
-            if self._target_commit:
-                self._tree_repo = WSTRepository.get(self._db, self._target_commit)
-            else:
-                self._tree_repo = WSTRepository.get(self._db, self._current_commit_hash)
-        if self._tree_repo is None:
-            raise RuntimeError(f"Repo does not exist in db.")
-        if self._tree_repo.wst_status != "deleting":
-            log.info(f"Repo status {self._tree_repo.wst_status} -> deleting")
-            self._tree_repo.wst_status = "deleting"
-            self._tree_repo.update_in_db(self._db)
-        else:
-            log.info(f"Resuming deletion ...")
+        # if not self._db:
+        #     self._connect_db()
+        # if not self._tree_repo:
+        #     log.info(f"Attempting to fetch WSTRepository document from db...")
+        #     self._tree_repo = next(WSTRespository.find(self._db, {"url": self.repo_url}), None)
+        # if self._tree_repo is None:
+        #     raise RuntimeError(f"Repo does not exist in db.")
+        # if self._tree_repo.wst_status != "deleting":
+        #     log.info(f"Repo status {self._tree_repo.wst_status} -> deleting")
+        #     self._tree_repo.wst_status = "deleting"
+        #     self._tree_repo.update_in_db(self._db)
+        # else:
+        #     log.info(f"Resuming deletion ...")
+        #
+        # nodechunksize = 1000
+        # commit = next(self._tree_repo.get_children(self._db, WSTCommit))
+        # files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
+        # for f in files:
+        #     codetree = next(f.get_children(self._db, WSTCodeTree), None)
+        #     if codetree is not None:
+        #         nodes = WSTNode.iterate_from_parent(self._db, f, return_inflated=False)
+        #         for chunk in chunkiter(nodes, nodechunksize):
+        #             with self._db.begin_batch_execution() as bdb:
+        #                 graph = bdb.graph(tree_models._graph_name)
+        #                 vertcoll = graph.vertex_collection(WSTNode._collection)
+        #                 log.debug(f"Deleting {len(chunk)} nodes of {f.path}")
+        #                 for n in chunk:
+        #                     vertcoll.delete(n)
+        #     log.debug(f"Delete file {f.path}")
+        #     self._vert_colls[WSTFile._collection].delete(f._key)
+        # log.debug(f"Deleted files & nodes")
+        # self._vert_colls[WSTRepository._collection].delete(self._tree_repo._key)
+        # log.info(f"Deleted repo {self._tree_repo.url} @ {self._tree_repo.commit}")
+        # self._tree_repo = None
 
-        nodechunksize = 1000
-        files = WSTFile.iterate_from_parent(self._db, self._tree_repo)
-        for f in files:
-            nodes = WSTNode.iterate_from_parent(self._db, f, return_inflated=False)
-            for chunk in chunkiter(nodes, nodechunksize):
-                with self._db.begin_batch_execution() as bdb:
-                    graph = bdb.graph(tree_models._graph_name)
-                    vertcoll = graph.vertex_collection(WSTNode._collection)
-                    log.debug(f"Deleting {len(chunk)} nodes of {f.path}")
-                    for n in chunk:
-                        vertcoll.delete(n)
-            log.debug(f"Delete file {f.path}")
-            self._vert_colls[WSTFile._collection].delete(f._key)
-        log.debug(f"Deleted files & nodes")
-        self._vert_colls[WSTRepository._collection].delete(self._tree_repo._key)
-        log.info(f"Deleted repo {self._tree_repo.url} @ {self._tree_repo.commit}")
-        self._tree_repo = None
-
-    def collect_all(self, existing_node_q = None):
+    def collect_all(self, existing_node_q = None, overwrite_incomplete: bool = False):
         """Creates every node down the tree for this repo"""
         # create the main Repos
         self._tree_repo = WSTRepository(
@@ -198,7 +200,11 @@ class WST_ArangoTreeCollector():
         except arango.exceptions.DocumentInsertError as e:
             if e.http_code == 409:
                 existing_repo = WSTRepository.get(self._db, self._tree_repo._key)
-                raise RepoExistsError(f"Already present: {existing_repo}")
+                if overwrite_incomplete and existing_repo.wst_status != "completed":
+                    log.warn(f"Overwriting prior WSTRespository, status was '{existing_repo.wst_status}'")
+                    self._tree_repo.update_in_db(self._db)
+                else:
+                    raise RepoExistsError(f"Already present: {existing_repo}")
             else:
                 raise e
 
@@ -217,7 +223,13 @@ class WST_ArangoTreeCollector():
         else:
             self._wst_commit = commit
         rel_repo_commit = self._tree_repo / self._wst_commit
-        rel_repo_commit.insert_in_db(self._db)
+        try:
+            rel_repo_commit.insert_in_db(self._db)
+        except arango.exceptions.DocumentInsertError as e:
+            if e.http_code == 409:
+                rel_repo_commit.update_in_db(self._db)
+            else:
+                raise
 
         index = self._get_git_repo().index
         index.read()

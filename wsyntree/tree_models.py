@@ -13,11 +13,13 @@ from .utils import dotdict, shake256hex
 from .exceptions import *
 
 __all__ = [
+    'WST_Document', 'WST_Edge',
     'WSTRepository', 'WSTCommit', 'WSTFile',
     'WSTCodeTree', 'WSTNode', 'WSTText',
 ]
 
 _graph_name = 'wst'
+_collection_name_to_class = {} # populated at import time, bottom of this file
 
 
 class WST_Document():
@@ -39,6 +41,17 @@ class WST_Document():
         else:
             document = res
         return cls(**document) if document is not None else None
+
+    @classmethod
+    def find(cls, db, spec):
+        """Find instances matching spec
+
+        Returns an iterable of matched instances.
+        """
+        collection = db.collection(cls._collection)
+        cur = collection.find(spec)
+        for document in cur:
+            yield cls(**document)
 
     def __init__(self, *args, **kwargs):
         # slots = chain.from_iterable([getattr(cls, '__slots__', tuple()) for cls in type(self).__mro__])
@@ -141,43 +154,100 @@ class WST_Document():
         return f"{type(self)}({self.__dict__})"
     __str__ = __repr__
 
+    def get_children(self, db, cls, return_inflated=True):
+        """Iterate all children of this node
+
+        cls: WST_Document class of the Child type to retrieve
+        """
+        graph = db.graph(_graph_name)
+        edge_coll = graph.edge_collection(self._edge_to[cls._collection])
+
+        edges = edge_coll.edges(self.__dict__, "out")['edges']
+        for e in edges:
+            yield cls.get(db, e['_to']) if return_inflated else e['_to']
+
+    def get_parents(self, db, cls, return_inflated=True):
+        """Iterate all parents of this node
+
+        cls: WST_Document class of the Parent type to retrieve
+        """
+        graph = db.graph(_graph_name)
+        edge_coll = graph.edge_collection(cls._edge_to[self._collection])
+
+        edges = edge_coll.edges(self.__dict__, "in")['edges']
+        for e in edges:
+            yield cls.get(db, e['_from']) if return_inflated else e['_from']
+
 class WST_Edge(dict):
     # These slots are NOT part of the inserted document in Arango
     __slots__ = [
-        "_w_from",
-        "_w_to",
-        "_w_collection",
+        "_from_collection",
+        "_from_key",
+        "_to_collection",
+        "_to_key",
+        "_edge_collection",
     ]
-    def __init__(self, nfrom: WST_Document, to: Union[WST_Document, str]):
-        if not nfrom._edge_to:
-            raise TypeError(f"Cannot create an edge from {type(nfrom)}: no edge collections specified")
-        if isinstance(to, str):
-            if '/' not in to:
-                raise ValueError(f"when `to` is string: must be fully qualified document ID: invalid ID '{to}'")
-            coll, key = to.split('/')
-            if coll not in nfrom._edge_to.keys():
-                raise TypeError(f"cannot connect type {type(nfrom)} to a document of type {type(to)}, edge collection from {nfrom._collection} to {coll} not set")
-            self._w_to = WST_Document(
-                _collection=coll,
-                _key=key,
-            )
-        elif isinstance(to, WST_Document) and to._collection not in nfrom._edge_to:
-            raise TypeError(f"cannot connect type {type(nfrom)} to type {type(to)}, no edge collection set for these types")
-        elif isinstance(to, WST_Document):
-            self._w_to = to
-        self._w_collection = nfrom._edge_to[self._w_to._collection]
-        self._w_from = nfrom
+    def __init__(self, nfrom: Union[WST_Document, str], nto: Union[WST_Document, str]):
+        # FROM
+        if isinstance(nfrom, str):
+            if '/' not in nfrom:
+                raise ValueError(f"when `from` is string: must be fully qualified document ID: invalid ID '{nfrom}'")
+            self._from_collection, self._from_key = nfrom.split('/')
+        else:
+            self._from_collection, self._from_key = nfrom._collection, nfrom._key
+
+        # TO
+        if isinstance(nto, str):
+            if '/' not in nto:
+                raise ValueError(f"when `to` is string: must be fully qualified document ID: invalid ID '{nto}'")
+            self._to_collection, self._to_key = nto.split('/')
+        else:
+            self._to_collection, self._to_key = nto._collection, nto._key
+
+        _src_cls = _collection_name_to_class.get(self._from_collection)
+        if _src_cls is None:
+            raise TypeError(f"collection '{self._from_collection}' has no associated WST_Document model")
+        if self._to_collection not in _src_cls._edge_to.keys():
+            raise TypeError(f"cannot connect type {_src_cls.__name__} to {nto}, edge collection from {_src_cls._collection} to {self._to_collection} not set")
+        self._edge_collection = _src_cls._edge_to[self._to_collection]
 
         # hash the keys because each vert's key could be >= half the max key size
-        self["_key"] = shake256hex(f"{self._w_from._key}+{self._w_to._key}", 64)
-        self["_from"] = self._w_from._id
-        self["_to"] = self._w_to._id
+        self["_key"] = shake256hex(f"{self._from_key}+{self._to_key}", 64)
+        self["_from"] = f"{self._from_collection}/{self._from_key}"
+        self["_to"] = f"{self._to_collection}/{self._to_key}"
 
-    def insert_in_db(self, db):
+    def insert_in_db(self, db, wait_if_async=True, overwrite: bool = False):
         """Uses the graph API!"""
         graph = db.graph(_graph_name)
-        edges = graph.edge_collection(self._w_collection)
-        edges.insert(self)
+        edges = graph.edge_collection(self._edge_collection)
+
+        try:
+            res = edges.insert(self)
+            if db.context == "async" and wait_if_async:
+                # wait for the async result and return that or error
+                return auto_asyncjobdone_retry(lambda: res.result())()
+        except arango.exceptions.DocumentInsertError as e:
+            if overwrite and e.http_code == 409 and e.error_code == arango.errno.UNIQUE_CONSTRAINT_VIOLATED:
+                res = edges.replace(self)
+                if db.context == "async" and wait_if_async:
+                    # wait for the async result and return that or error
+                    return auto_asyncjobdone_retry(lambda: res.result())()
+            else:
+                raise
+        return res
+
+    def update_in_db(self, db, wait_if_async=True, **update_kwargs):
+        """Uses the graph API!"""
+        graph = db.graph(_graph_name)
+        edges = graph.edge_collection(self._edge_collection)
+        res = edges.update(self, **update_kwargs)
+
+        if db.context == "async" and wait_if_async:
+            # wait for the async result and return that or error
+            return auto_asyncjobdone_retry(lambda: res.result())()
+        else:
+            return res
+
 
 ### DOCUMENT TYPES
 # NOTE
@@ -204,7 +274,7 @@ class WSTText(WST_Document):
         thus we will never lose data with overwrite
         """
         assert self._key
-        super().insert_in_db(db, overwrite_mode="replace", **kwargs)
+        return super().insert_in_db(db, overwrite_mode="replace", **kwargs)
 
 class WSTNode(WST_Document):
     """A single node in the Abstract or Concrete syntax tree
@@ -214,7 +284,7 @@ class WSTNode(WST_Document):
     _collection = "wst_nodes"
     _edge_to = {
         WSTText._collection: "wst-node-text", # singular
-        _collection: "wst-node-parent", # singular, own-kind
+        _collection: "wst-node-children", # singular, own-kind
     }
     __slots__ = [
         # x: line, y: character (2d coords begin->end)
@@ -316,6 +386,7 @@ for localname, value in dict(locals()).items():
         if hasattr(value, '_collection') and issubclass(value, WST_Document):
             if isinstance(value._collection, str):
                 _db_collections.append(value._collection)
+                _collection_name_to_class[value._collection] = value
             if hasattr(value, '_edge_to'):
                 for targetcoll, edgecollname in value._edge_to.items():
                     _db_edgecollections.append(edgecollname)
@@ -334,3 +405,5 @@ if __name__ == '__main__':
     log.info(f"Edge Collections: {_db_edgecollections}")
     log.info(f"Graph construction:")
     pp.pprint(_graph_edge_definitions)
+    log.info(f"Collection names to classes:")
+    pp.pprint(_collection_name_to_class)
