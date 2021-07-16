@@ -39,6 +39,7 @@ setup(
         "cachetools",
         "enlighten",
         "psutil",
+        "bpython",
     ],
     entry_points={
         'console_scripts': [
