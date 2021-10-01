@@ -41,7 +41,7 @@ def analyze(args):
     en_manager = multiprogress.get_manager()
 
     with multiprocessing.Manager() as mp_manager:
-        export_q = mp_manager.Queue(20000)
+        export_q = mp_manager.Queue(200)
         # exporter = WST_FileExporter(output_path, delete_existing=True)
         export_proc = write_from_queue(export_q, en_manager_proxy, output_path, delete_existing=True)
         collector = WST_JSONLCollector(

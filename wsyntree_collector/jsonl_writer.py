@@ -53,7 +53,7 @@ class WST_FileExporter():
         # f.write(json.dumps(doc.__dict__, sort_keys=True))
         # f.write('\n')
         self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
-        if len(self._pending_lines[doc._collection]) > 1000000:
+        if len(self._pending_lines[doc._collection]) > 100000:
             self._flush(only_collection=doc._collection)
 
     def _get_open_file(self, collname):

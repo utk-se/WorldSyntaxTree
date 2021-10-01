@@ -46,7 +46,7 @@ def _process_file(
         *,
         node_q = None,
         en_manager = None,
-        batch_write_size=100000,
+        batch_write_size=10000,
     ):
     """Given an incomplete WSTFile,
     Creates a WSTCodeTree, WSTNodes, and WSTTexts for it
