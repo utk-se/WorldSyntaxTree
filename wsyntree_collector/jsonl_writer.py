@@ -2,7 +2,7 @@
 from pathlib import Path
 import time
 import os
-from typing import Union
+from typing import Union, List
 import json
 from contextlib import contextmanager
 
@@ -45,6 +45,20 @@ class WST_FileExporter():
         for collname, cf in self._coll_files.items():
             self._locks[collname] = filelock.FileLock(self.dir / f"{collname}.lock")
             self._pending_lines[collname] = []
+
+    def write_many_documents(self, docs: List[Union[WST_Document, WST_Edge]]):
+        """Output a list of documents to the filesystem"""
+        # with self._locks[doc._collection].acquire():
+        # f = self._get_open_file(doc._collection)
+        # f.write(json.dumps(doc.__dict__, sort_keys=True))
+        # f.write('\n')
+        modified_collections = set()
+        for doc in docs:
+            self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
+            modified_collections.add(doc._collection)
+        for collname in modified_collections:
+            if len(self._pending_lines[collname]) > 100000:
+                self._flush(only_collection=collname)
 
     def write_document(self, doc: Union[WST_Document, WST_Edge]):
         """Output a document to the filesystem"""
@@ -103,9 +117,11 @@ def write_from_queue(q, en_manager, *args, **kwargs):
         while (incoming := q.get()) is not None:
             if isinstance(incoming, list):
                 for doc in incoming:
-                    if isinstance(doc, WST_Document) and not hasattr(doc, '_key'):
-                        doc._genkey()
-                    self.write_document(doc)
+                    def get_docs():
+                        if isinstance(doc, WST_Document) and not hasattr(doc, '_key'):
+                            doc._genkey()
+                        yield doc
+                    self.write_many_documents(get_docs())
                 cntr.update(len(incoming))
             elif isinstance(incoming, WST_Document):
                 doc = incoming
