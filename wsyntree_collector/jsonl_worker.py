@@ -46,7 +46,7 @@ def _process_file(
         *,
         node_q = None,
         en_manager = None,
-        batch_write_size=1000,
+        batch_write_size=100000,
     ):
     """Given an incomplete WSTFile,
     Creates a WSTCodeTree, WSTNodes, and WSTTexts for it
@@ -150,17 +150,17 @@ def _process_file(
             except UnicodeDecodeError as e:
                 log.warn(f"{file}: failed to decode content")
                 code_tree.error = "UnicodeDecodeError"
-                export_q.put(code_tree)
+                batch_writes.append(code_tree)
                 return file # ends process
 
-            export_q.put(nn)
+            batch_writes.append(nn)
             order_to_id[nn.preorder] = nn._id
             if parentorder is not None:
                 # parent node -> child
-                export_q.put(WST_Edge(order_to_id[parentorder], nn))
+                batch_writes.append(WST_Edge(order_to_id[parentorder], nn))
             else:
                 # if it is none, this is the root node, link it
-                export_q.put(code_tree / nn)
+                batch_writes.append(code_tree / nn)
 
             # text storage (deduplication)
             nt = WSTText(
@@ -169,13 +169,17 @@ def _process_file(
             )
             nt._genkey()
             if nt._id not in known_exists_text_ids:
-                export_q.put(nt)
+                batch_writes.append(nt)
                 known_exists_text_ids.add(nt._id)
                 memoiz_stats[1] += 1
             else:
                 memoiz_stats[0] += 1
             # link node -> text
-            export_q.put(nn / nt)
+            batch_writes.append(nn / nt)
+
+            if len(batch_writes) >= batch_write_size:
+                export_q.put(batch_writes)
+                batch_writes = []
 
             preorder += 1
 
@@ -208,7 +212,15 @@ def _process_file(
                         ))
                     # unset error: CodeTree is completed successfully
                     code_tree.error = None
-                    export_q.put(code_tree)
+                    batch_writes.append(code_tree)
+                    if not hasattr(file, '_key'):
+                        file._genkey()
+                    if not hasattr(code_tree, '_key'):
+                        code_tree._genkey()
+                    batch_writes.append(file / code_tree)
+                    if batch_writes:
+                        export_q.put(batch_writes)
+                        batch_writes = []
                     return file # end process / everything went smoothly
     except BrokenPipeError as e:
         log.warn(f"caught {type(e)}: {e}")

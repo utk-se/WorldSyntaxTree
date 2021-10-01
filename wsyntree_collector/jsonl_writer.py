@@ -53,8 +53,8 @@ class WST_FileExporter():
         # f.write(json.dumps(doc.__dict__, sort_keys=True))
         # f.write('\n')
         self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
-        if len(self._pending_lines[doc._collection]) > 100000:
-            self._flush()
+        if len(self._pending_lines[doc._collection]) > 1000000:
+            self._flush(only_collection=doc._collection)
 
     def _get_open_file(self, collname):
         if collname in self._open_files:
@@ -72,11 +72,21 @@ class WST_FileExporter():
             self._open_files[collname].close()
             del self._open_files[collname]
 
-    def _flush(self):
-        for collname, lines in self._pending_lines.items():
+    def _flush(self, only_collection = None):
+        if only_collection is None:
+            for collname, lines in self._pending_lines.items():
+                f = self._get_open_file(collname)
+                # for l in lines:
+                #     f.write(l)
+                f.write(''.join(lines))
+                self._pending_lines[collname] = []
+        else:
+            collname = only_collection
+            lines = self._pending_lines[collname]
             f = self._get_open_file(collname)
-            for l in lines:
-                f.write(l)
+            # for l in lines:
+            #     f.write(l)
+            f.write(''.join(lines))
             self._pending_lines[collname] = []
 
 @concurrent.process
@@ -90,10 +100,24 @@ def write_from_queue(q, en_manager, *args, **kwargs):
     )
     try:
         self._open_all_append()
-        while (doc := q.get()) is not None:
-            if isinstance(doc, WST_Document) and not hasattr(doc, '_key'):
-                doc._genkey()
-            self.write_document(doc)
-            cntr.update(1)
+        while (incoming := q.get()) is not None:
+            if isinstance(incoming, list):
+                for doc in incoming:
+                    if isinstance(doc, WST_Document) and not hasattr(doc, '_key'):
+                        doc._genkey()
+                    self.write_document(doc)
+                cntr.update(len(incoming))
+            elif isinstance(incoming, WST_Document):
+                doc = incoming
+                if not hasattr(doc, '_key'):
+                    doc._genkey()
+                self.write_document(doc)
+                cntr.update(1)
+            elif isinstance(incoming, WST_Edge):
+                doc = incoming
+                self.write_document(doc)
+                cntr.update(1)
+            else:
+                raise RuntimeError(f"Invalid write input: {incoming}")
     finally:
         self._close_all()
