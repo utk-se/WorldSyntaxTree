@@ -5,7 +5,9 @@ import os
 from typing import Union, List
 import json
 from contextlib import contextmanager
+import cProfile
 
+import orjson
 import filelock
 from pebble import concurrent
 
@@ -39,26 +41,30 @@ class WST_FileExporter():
 
         self._in_context = False
         self._open_files = {}
-        self._pending_lines = {}
+        # self._pending_lines = {}
+        self._pending_bytes = {}
 
         self._locks = {}
         for collname, cf in self._coll_files.items():
             self._locks[collname] = filelock.FileLock(self.dir / f"{collname}.lock")
-            self._pending_lines[collname] = []
+            # self._pending_lines[collname] = []
+            self._pending_bytes[collname] = bytearray()
+
+    def _flush_if_needed(self, collname):
+        if len(self._pending_bytes[collname]) > 10000000:
+            self._flush(only_collection=collname)
 
     def write_many_documents(self, docs: List[Union[WST_Document, WST_Edge]]):
         """Output a list of documents to the filesystem"""
-        # with self._locks[doc._collection].acquire():
-        # f = self._get_open_file(doc._collection)
-        # f.write(json.dumps(doc.__dict__, sort_keys=True))
-        # f.write('\n')
         modified_collections = set()
         for doc in docs:
-            self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
+            # self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
+            self._pending_bytes[doc._collection] += orjson.dumps(
+                doc.__dict__, option=orjson.OPT_SORT_KEYS | orjson.OPT_APPEND_NEWLINE
+            )
             modified_collections.add(doc._collection)
         for collname in modified_collections:
-            if len(self._pending_lines[collname]) > 100000:
-                self._flush(only_collection=collname)
+            self._flush_if_needed(collname)
 
     def write_document(self, doc: Union[WST_Document, WST_Edge]):
         """Output a document to the filesystem"""
@@ -66,9 +72,11 @@ class WST_FileExporter():
         # f = self._get_open_file(doc._collection)
         # f.write(json.dumps(doc.__dict__, sort_keys=True))
         # f.write('\n')
-        self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
-        if len(self._pending_lines[doc._collection]) > 100000:
-            self._flush(only_collection=doc._collection)
+        # self._pending_lines[doc._collection].append(json.dumps(doc.__dict__, sort_keys=True) + '\n')
+        self._pending_bytes[doc._collection] += orjson.dumps(
+            doc.__dict__, option=orjson.OPT_SORT_KEYS | orjson.OPT_APPEND_NEWLINE
+        )
+        self._flush_if_needed(doc._collection)
 
     def _get_open_file(self, collname):
         if collname in self._open_files:
@@ -78,7 +86,7 @@ class WST_FileExporter():
 
     def _open_all_append(self):
         for collname, cf in self._coll_files.items():
-            self._open_files[collname] = cf.open('a')
+            self._open_files[collname] = cf.open('ab')
 
     def _close_all(self):
         self._flush()
@@ -88,27 +96,42 @@ class WST_FileExporter():
 
     def _flush(self, only_collection = None):
         if only_collection is None:
-            for collname, lines in self._pending_lines.items():
+            # for collname, lines in self._pending_lines.items():
+            for collname, _bytestr in self._pending_bytes.items():
                 f = self._get_open_file(collname)
                 # for l in lines:
                 #     f.write(l)
-                f.write(''.join(lines))
-                self._pending_lines[collname] = []
+                f.write(_bytestr)
+                # self._pending_lines[collname] = []
+                self._pending_bytes[collname] = bytearray()
         else:
             collname = only_collection
-            lines = self._pending_lines[collname]
+            _bytestr = self._pending_bytes[collname]
             f = self._get_open_file(collname)
             # for l in lines:
             #     f.write(l)
-            f.write(''.join(lines))
-            self._pending_lines[collname] = []
+            f.write(_bytestr)
+            # self._pending_lines[collname] = []
+            self._pending_bytes[collname] = bytearray()
+
+def profileit(name):
+    def inner(func):
+        def wrapper(*args, **kwargs):
+            prof = cProfile.Profile()
+            retval = prof.runcall(func, *args, **kwargs)
+            # Note use of name from outer scope
+            prof.dump_stats(name)
+            return retval
+        return wrapper
+    return inner
 
 @concurrent.process
+@profileit('queue_writer.profile')
 def write_from_queue(q, en_manager, *args, **kwargs):
     """Write out any document that comes in from the queue"""
     self = WST_FileExporter(*args, **kwargs)
     log.debug(f"writing to target output dir: {self.dir}")
-    time.sleep(1)
+    time.sleep(0.1)
     cntr = en_manager.counter(
         desc="writing to files", position=1, unit='docs', autorefresh=True
     )
@@ -135,5 +158,8 @@ def write_from_queue(q, en_manager, *args, **kwargs):
                 cntr.update(1)
             else:
                 raise RuntimeError(f"Invalid write input: {incoming}")
+    except Exception as e:
+        log.error(f"{type(e)}: {e}")
+        raise e
     finally:
         self._close_all()

@@ -130,10 +130,12 @@ class WST_JSONLCollector():
             parent_ids=[str(i) for i in _cc.parent_ids],
             tree_id=str(_cc.tree_id),
         )
-        self._export_q.put(self._wst_commit)
 
         rel_repo_commit = self._tree_repo / self._wst_commit
-        self._export_q.put(rel_repo_commit)
+        self._export_q.put([
+            self._wst_commit,
+            rel_repo_commit,
+        ])
 
         index = self._get_git_repo().index
         index.read()
@@ -179,10 +181,12 @@ class WST_JSONLCollector():
                     )
                     for r in futures.as_completed(ret_futures):
                         completed_file = r.result()
-                        self._export_q.put(completed_file)
                         if not hasattr(completed_file, '_key'):
                             completed_file._genkey()
-                        self._export_q.put(self._wst_commit / completed_file)
+                        self._export_q.put([
+                            completed_file,
+                            self._wst_commit / completed_file,
+                        ])
                         cntr_files_processed.update()
                     # after all results returned
                     self._tree_repo.wst_status = "completed"

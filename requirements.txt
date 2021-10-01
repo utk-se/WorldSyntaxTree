@@ -8,3 +8,4 @@ enlighten==1.9.0
 psutil
 tenacity
 bpython
+orjson>=3.0.0
