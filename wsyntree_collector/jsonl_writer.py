@@ -78,6 +78,18 @@ class WST_FileExporter():
         )
         self._flush_if_needed(doc._collection)
 
+    def cleanup(self):
+        """Cleans up the output dir, removing extras like lockfiles
+
+        WARN: Don't call this until all writes are completed.
+        """
+        for collname, lockfile in self._locks.items():
+            if lockfile.is_locked:
+                raise RuntimeError(f"Filelock for collection {collname} is currently held and should not be removed.")
+        for collname, lockfile in self._locks.items():
+            lockpath = Path(lockfile.lock_file)
+            lockpath.unlink()
+
     def _get_open_file(self, collname):
         if collname in self._open_files:
             return self._open_files[collname]
@@ -133,9 +145,9 @@ def profileit(name):
 
 @concurrent.process
 @profileit('queue_writer.profile')
-def write_from_queue(q, en_manager, *args, **kwargs):
+def write_from_queue(q, en_manager, *args, cleanup_on_complete=False, **kwargs):
     """Write out any document that comes in from the queue"""
-    self = WST_FileExporter(*args, **kwargs)
+    self = WST_FileExporter(*args, **kwargs) # pls ignore convention breaking
     log.debug(f"writing to target output dir: {self.dir}")
     time.sleep(0.1)
     cntr = en_manager.counter(
@@ -169,3 +181,5 @@ def write_from_queue(q, en_manager, *args, **kwargs):
         raise e
     finally:
         self._close_all()
+        if cleanup_on_complete:
+            self.cleanup()

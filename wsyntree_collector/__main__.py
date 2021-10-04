@@ -64,6 +64,7 @@ def analyze(args):
             export_q,
             en_manager_proxy,
             output_path,
+            cleanup_on_complete=True,
             delete_existing=args.overwrite,
         )
 

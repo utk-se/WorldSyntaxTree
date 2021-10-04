@@ -57,7 +57,7 @@ def _process_file(
     en_manager: Enlighten Manager compatible API to get Counters from
     batch_write_size: when number of items in memory reaches this, write them all
 
-    Returns the completed AND inserted WSTFile, linked with wst_commit
+    Returns the WSTFile, linked to it's new CodeTree
     """
 
     # always done for every file:
