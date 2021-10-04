@@ -1,11 +1,13 @@
 tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master#egg=tree_sitter
+python-arango
 coloredlogs
 pygit2
 filelock
 tqdm
 Pebble
+tenacity
+cachetools
 enlighten==1.9.0
 psutil
-tenacity
 bpython
 orjson>=3.0.0
