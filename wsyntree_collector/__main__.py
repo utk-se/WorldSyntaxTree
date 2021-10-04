@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import time
 import signal
 import traceback
+from pathlib import Path
 
 import pygit2 as git
 from arango import ArangoClient
@@ -25,7 +26,7 @@ from wsyntree.tree_models import (
 )
 
 from .jsonl_writer import WST_FileExporter, write_from_queue
-from .arango_collector import WST_ArangoTreeCollector
+# from .arango_collector import WST_ArangoTreeCollector
 from .jsonl_collector import WST_JSONLCollector
 from .batch_analyzer import set_batch_analyze_args
 
@@ -33,7 +34,6 @@ from .batch_analyzer import set_batch_analyze_args
 def analyze(args):
 
     pr = urlparse(args.repo_url)
-    output_path = f"output/{pr.path[1:]}"
 
     multiprogress.main_proc_setup()
     multiprogress.start_server_thread()
@@ -43,7 +43,6 @@ def analyze(args):
     with multiprocessing.Manager() as mp_manager:
         export_q = mp_manager.Queue(200)
         # exporter = WST_FileExporter(output_path, delete_existing=True)
-        export_proc = write_from_queue(export_q, en_manager_proxy, output_path, delete_existing=True)
         collector = WST_JSONLCollector(
             args.repo_url,
             export_q=export_q,
@@ -54,12 +53,26 @@ def analyze(args):
         collector.setup()
         log.debug(f"Set up collector: {collector}")
 
+        output_path = args.output_dir or Path(f"output/{pr.path[1:]}/{collector.get_commit_hash()}")
+        if args.skip_exists and output_path.exists() and output_path.glob("*.jsonl"):
+            log.warn(f"Skipping collection: output dir {output_path} already exists")
+            return
+        elif not args.overwrite and output_path.exists() and output_path.glob("*.jsonl"):
+            log.error(f"Output already exists: {output_path}, to overwrite use --overwrite")
+            raise FileExistsError(f"Output dir already present: {output_path}")
+        export_proc = write_from_queue(
+            export_q,
+            en_manager_proxy,
+            output_path,
+            delete_existing=args.overwrite,
+        )
+
         if args.interactive_debug:
             log.warn("Starting debugging:")
             bpdb.set_trace()
 
         try:
-            collector.collect_all(overwrite_incomplete=args.overwrite_incomplete)
+            collector.collect_all()
         except RepoExistsError as e:
             if args.skip_exists:
                 log.warn(f"Skipping collection since repo document already present for commit {collector._current_commit_hash}")
@@ -167,39 +180,45 @@ def __main__():
 
     # analysis
     cmd_analyze = subcmds.add_parser(
-        'analyze', aliases=['add', 'a'], help="Analyze repositories")
+        'analyze', aliases=['analyze', 'a'], help="Analyze repositories to file output")
     cmd_analyze.set_defaults(func=analyze)
     cmd_analyze.add_argument(
         "repo_url",
         type=str,
-        help="URI for cloning the repository"
+        help="URI for cloning the repository",
     )
     cmd_analyze.add_argument(
         "-w", "--workers",
         type=int,
         help="Number of workers to use for processing files, default: os.cpu_count()",
-        default=None
+        default=None,
+    )
+    cmd_analyze.add_argument(
+        "-o", "--output-dir",
+        type=Path,
+        help="Path to write result files to",
+        default=None,
     )
     cmd_analyze.add_argument(
         "--skip-exists", "--skip-existing",
         action="store_true",
-        help="Skip the analysis if the repo document already exists in the database"
+        help="Skip the analysis if the output dir already exists and contains data",
     )
     cmd_analyze.add_argument(
         "--interactive-debug",
         action="store_true",
-        help="Start the interactive debugger after repo setup"
+        help="Start the interactive debugger after repo setup",
     )
     cmd_analyze.add_argument(
-        "--overwrite-incomplete",
+        "--overwrite",
         action="store_true",
-        help="Overwrite existing but incomplete / unfinished data in the DB"
+        help="Delete any existing files in the output dir before starting",
     )
     cmd_analyze.add_argument(
         "-t", "--target-commit",
         type=str,
         help="Checkout and analyze a specific commit from the repo",
-        default=None
+        default=None,
     )
     # batch analysis
     cmd_batch = subcmds.add_parser(

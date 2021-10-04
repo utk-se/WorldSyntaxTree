@@ -86,6 +86,11 @@ class WST_FileExporter():
 
     def _open_all_append(self):
         for collname, cf in self._coll_files.items():
+            try:
+                self._locks[collname].acquire(timeout=60)
+            except filelock.Timeout as e:
+                log.error(f"Could not acquire output lock for {collname}")
+                raise e
             self._open_files[collname] = cf.open('ab')
 
     def _close_all(self):
@@ -93,6 +98,7 @@ class WST_FileExporter():
         for collname, cf in self._coll_files.items():
             self._open_files[collname].close()
             del self._open_files[collname]
+            self._locks[collname].release()
 
     def _flush(self, only_collection = None):
         if only_collection is None:

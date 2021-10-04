@@ -110,7 +110,10 @@ class WST_JSONLCollector():
 
     ### NOTE public control functions
 
-    def collect_all(self, existing_node_q = None, overwrite_incomplete: bool = False):
+    def get_commit_hash(self):
+        return self._current_commit_hash
+
+    def collect_all(self, existing_node_q = None):
         """Creates every node down the tree for this repo"""
         # create the main Repos
         self._tree_repo = WSTRepository(
