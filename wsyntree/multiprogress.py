@@ -24,10 +24,13 @@ _req_queue = None
 
 def main_proc_setup():
     global _main_proc_en_manager
-    _main_proc_en_manager = enlighten.get_manager()
+    if threading.current_thread() is not threading.main_thread():
+        enlighten._manager.RESIZE_SUPPORTED = False
+    _main_proc_en_manager = enlighten.get_manager(no_resize=True)
 
 class EnlightenMultiprocessManager(SyncManager):
     pass
+
 def _mpcem_call_director(func, args, kwargs):
     try:
         func = getattr(_main_proc_en_manager, func)
@@ -35,6 +38,7 @@ def _mpcem_call_director(func, args, kwargs):
             raise RuntimeError(f"requested function not a callable")
         return func(*args, **kwargs)
     except Exception as e:
+        log.error(f"While attempting to execute {func} with args {args} and kwargs {kwargs}:")
         log.error(f"{type(e)}: {e}")
         raise e
 
