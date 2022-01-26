@@ -169,7 +169,7 @@ def _process_file(
 
                 # bail if we can't decode text
                 try:
-                    nnd.text = cur_node.text.tobytes().decode()
+                    nnd.text = cur_node.text.decode()
                     nnd.textlength = len(nnd.text)
                 except UnicodeDecodeError as e:
                     log.warn(f"{file}: failed to decode content")
