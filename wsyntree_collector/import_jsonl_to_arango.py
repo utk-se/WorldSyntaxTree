@@ -12,7 +12,14 @@ from wsyntree import log
 from wsyntree.utils import strip_url, desensitize_url
 
 
-cmdfmt_arangoimport = "arangoimport --progress true --file '{filepath}' --type jsonl --collection '{collname}' --server.database '{database}' --on-duplicate ignore --server.username '{username}' --server.password '{password}'"
+cmdfmt_arangoimport = ("arangoimport --progress true " + \
+    "--auto-rate-limit true " + \
+    "--file '{filepath}' " + \
+    "--type jsonl --collection '{collname}' " + \
+    "--server.database '{database}' " + \
+    "--on-duplicate ignore " + \
+    "--server.username '{username}' --server.password '{password}' "
+)
 
 def run_arangoimport(dir: Path, db_uri: str):
     collfiles = list(reversed(sorted(dir.glob("*.jsonl"))))
