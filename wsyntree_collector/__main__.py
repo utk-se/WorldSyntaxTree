@@ -30,6 +30,8 @@ from .jsonl_writer import WST_FileExporter, write_from_queue
 from .jsonl_collector import WST_JSONLCollector
 from .batch_analyzer import set_batch_analyze_args
 
+from . import commands
+
 
 def analyze(args):
 
@@ -248,6 +250,12 @@ def __main__():
         help="Delete any existing data in the database",
         action="store_true",
     )
+
+    # run for a single file
+    cmd_file = subcmds.add_parser(
+        'file', aliases=[], help="Run WST on a single file")
+    commands.file.set_args(cmd_file)
+
     args = parser.parse_args()
 
     if args.verbose:

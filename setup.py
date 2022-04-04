@@ -51,6 +51,7 @@ setup(
         "psutil",
         "bpython",
         "orjson>=3.0.0",
+        "networkx[default]"
     ],
     entry_points={
         'console_scripts': [

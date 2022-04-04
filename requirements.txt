@@ -11,3 +11,4 @@ enlighten==1.9.0
 psutil
 bpython
 orjson>=3.0.0
+networkx[default]
