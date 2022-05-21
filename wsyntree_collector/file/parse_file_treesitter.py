@@ -71,7 +71,10 @@ def build_networkx_graph(
         parent_order = parent_stack[-1] if parent_stack else None
 
         if include_text:
-            raise NotImplementedError(f"text decoding TODO")
+            try:
+                nn.text = cur_node.text.decode()
+            except:
+                log.warn(f"Cannot decode text.")
 
         log.debug(f"adding node {preorder}: {nn}")
         # insert node and it's data

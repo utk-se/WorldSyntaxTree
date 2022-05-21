@@ -1,6 +1,7 @@
 
 from pathlib import Path
 
+import networkx as nx
 from networkx.readwrite import json_graph
 import orjson
 
@@ -23,13 +24,13 @@ def run(args):
 
     lang = TreeSitterAutoBuiltLanguage(args.lang)
 
-    graph = build_networkx_graph(lang, args.which_file)
+    graph = build_networkx_graph(lang, args.which_file, include_text=True)
 
     log.info(f"Graph result: {graph}")
 
     # node_link_data = json_graph.node_link_data(graph)
     # log.debug(f"Graph node_link_data: {node_link_data}")
-    #
+
     # adjacency_data = json_graph.adjacency_data(graph)
     # log.debug(f"Graph adjacency_data: {adjacency_data}")
 
@@ -47,7 +48,11 @@ def run(args):
             raise NotImplementedError(f"output to stdout not yet supported")
 
         log.info(f"Writing to {args.output} ...")
-        with args.output.open('wb') as f:
-            f.write(orjson.dumps(
-                tree_data, option=orjson.OPT_APPEND_NEWLINE
-            ))
+        if str(args.output).endswith(".graphml"):
+            log.info("Writing GraphML")
+            nx.write_graphml(graph, args.output)
+        else:
+            with args.output.open('wb') as f:
+                f.write(orjson.dumps(
+                    tree_data, option=orjson.OPT_APPEND_NEWLINE
+                ))
