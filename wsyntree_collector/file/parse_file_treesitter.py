@@ -38,6 +38,7 @@ def build_networkx_graph(
         lang: TreeSitterAutoBuiltLanguage, file: Path,
         only_named_nodes: bool = False,
         include_text: bool = False,
+        node_name_prefix="",
     ):
     tree = lang.parse_file(file)
     cur = tree.walk()
@@ -78,7 +79,7 @@ def build_networkx_graph(
 
         log.debug(f"adding node {preorder}: {nn}")
         # insert node and it's data
-        G.add_node(preorder, **nn)
+        G.add_node(node_name_prefix + str(preorder), **nn)
 
         # add the edge
         if cur_node.parent is not None:
