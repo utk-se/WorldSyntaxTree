@@ -1,4 +1,4 @@
-Copyright (c) 2020-2021;
+Copyright (c) 2020-2023;
 Ben Klein (robobenklein)
 *et al* (`git shortlog -sn`)
 

@@ -12,11 +12,8 @@ Scales to incredible size: the goal is to build a system capable of storing, par
 WorldSyntaxTree is built upon the following technologies:
 
 - Python: we chose this as it is quick to develop and has a large ecosystem of scientific libraries that we aim to be able to support integration with. In our field of research Python is the most popular to use for quickly wrangling large and complex datasets.
+  - [NetworkX](https://networkx.org/): graph wrangling library of choice
 - [Tree-Sitter](https://tree-sitter.github.io/tree-sitter/): this is the integral component to enable us to generate the concrete syntax trees from code quickly while still generating a somewhat useful result even on broken code.
-- [ArangoDB](https://www.arangodb.com/): our choice of database stemmed from the following requirements:
-  - Must be open source (free for use and improvement by all)
-  - Must support our incredibly large data size (many terabytes)
-  - Must have native/serverside graph processing capabilities
 - Git: the outer / top-level structure for the whole tree is based upon Git's structure of repositories, commits, and files, thus we aren't currently exploring other VCS systems (though we might in the far future)
 
 For a full list of libraries used, check the `setup.py` or `requirements.txt`.
@@ -54,9 +51,15 @@ Requirements:
 - Standard development tooling (git, pip, python-dev, setuptools, etc)
 - C++ compiler (ubuntu: `libc++-dev libc++abi-dev`, plus any other dependencies needed for WST to auto-compile Tree-Sitter languages)
 - Python 3.8+
-- Optional: an ArangoDB instance
 
-Install steps:
+Recommended: perform these steps in a python Virtual Environment:
+
+```
+virtualenv -p python3 venv
+source venv/bin/activate # run again to activate the virtualenv again later
+```
+
+Install dependencies and wsyntree itself:
 
 ```
 python -m pip install -r requirements.txt
