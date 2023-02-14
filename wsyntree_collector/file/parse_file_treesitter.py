@@ -80,13 +80,14 @@ def build_networkx_graph(
 
         log.debug(f"adding node {preorder}: {nn}")
         # insert node and it's data
-        G.add_node(node_name_prefix + str(preorder), **nn)
+        G.add_node(preorder, **nn)
 
         # add the edge
         if cur_node.parent is not None:
-            log.debug(f"connecting node {preorder}, to id {cur_node.parent.id}")
+            parent_preorder = ts_id_to_preorder[cur_node.parent.id]
+            log.debug(f"connecting node {preorder}, to {parent_preorder}")
             G.add_edge(
-                ts_id_to_preorder[cur_node.parent.id],
+                parent_preorder,
                 preorder
             )
 
