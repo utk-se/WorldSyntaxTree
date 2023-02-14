@@ -35,7 +35,8 @@ from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCur
 #     return ndf.persist().repartition(1)
 
 def build_networkx_graph(
-        lang: TreeSitterAutoBuiltLanguage, file: Path,
+        lang: TreeSitterAutoBuiltLanguage,
+        file: Path,
         only_named_nodes: bool = False,
         include_text: bool = False,
         node_name_prefix="",
