@@ -50,6 +50,10 @@ def run(args):
                 f.write(orjson.dumps({
                     "sha512": nh._get_sha512_hex(),
                     "file": str(args.which_file),
+                    # obviously we want coords to allow humans to quickly find the referenced code
+                    "x1": nh._node_props['x1'],
+                    "y1": nh._node_props['y1'],
+                    # TODO: "objectid": git-object-id, (when run in batch mode)
                 }, option=orjson.OPT_APPEND_NEWLINE))
         # if str(args.output).endswith(".graphml"):
         #     log.info("Writing GraphML")
