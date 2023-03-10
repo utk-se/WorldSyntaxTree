@@ -52,7 +52,10 @@ def run(args):
                     "file": str(args.which_file),
                     # obviously we want coords to allow humans to quickly find the referenced code
                     "x1": nh._node_props['x1'],
+                    "x2": nh._node_props['x2'],
                     "y1": nh._node_props['y1'],
+                    # while the node's hash *is* unique, make it easier to find:
+                    "type": nh._node_props['type'],
                     # TODO: "objectid": git-object-id, (when run in batch mode)
                 }, option=orjson.OPT_APPEND_NEWLINE))
         # if str(args.output).endswith(".graphml"):
