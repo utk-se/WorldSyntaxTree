@@ -4,6 +4,7 @@ from typing import AnyStr, Callable
 import functools
 import re
 import time
+import warnings
 
 import pebble
 from tree_sitter import Language, Parser, TreeCursor, Node
@@ -18,6 +19,7 @@ from .constants import wsyntree_langs, wsyntree_file_to_lang
 
 class TreeSitterAutoBuiltLanguage():
     def __init__(self, lang):
+        assert lang in wsyntree_langs, f"{lang} not found or not yet available in WorldSyntaxTree"
         self.lang = lang
         self.parser = None
         self.ts_language = None
@@ -42,6 +44,7 @@ class TreeSitterAutoBuiltLanguage():
             if not repodir.exists():
                 repodir.mkdir(mode=0o770)
                 log.debug(f"cloning treesitter repo for {self}")
+                warnings.warn(f"WorldSyntaxTree cloning parser repo for {self.lang}, this might be slow.")
                 return git.clone_repository(
                     wsyntree_langs[self.lang]["tsrepo"],
                     repodir.resolve()

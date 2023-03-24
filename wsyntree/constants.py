@@ -23,10 +23,10 @@ wsyntree_langs = {
         "tsrepo": "https://github.com/tree-sitter/tree-sitter-ruby.git",
         "file_ext": "\.rb$",
     },
-    # "csharp": {
-    #     "tsrepo": "https://github.com/tree-sitter/tree-sitter-c-sharp.git",
-    #     "file_ext": "\.cs$",
-    # },
+    "c_sharp": { # name in compiled language uses underscore
+        "tsrepo": "https://github.com/tree-sitter/tree-sitter-c-sharp.git",
+        "file_ext": "\.cs$",
+    },
     "c": {
         "tsrepo": "https://github.com/tree-sitter/tree-sitter-c.git",
         "file_ext": "\.(c|h)$",

@@ -31,6 +31,9 @@ class UnhandledGitFileMode(ValueError, WSTBaseError):
 class DeduplicatedObjectMismatch(ValueError, WSTBaseError):
     pass
 
+class RootTreeSitterNodeIsError(ValueError, WSTBaseError):
+    pass
+
 def isArangoWriteWriteConflict(e: ArangoDocumentInsertError) -> bool:
     """Is an exception a Write-Write conflict?"""
     if isinstance(e, ArangoDocumentInsertError):

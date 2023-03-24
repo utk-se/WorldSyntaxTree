@@ -8,6 +8,7 @@ from pathlib import Path
 import networkx as nx
 
 from wsyntree import log
+from wsyntree.exceptions import RootTreeSitterNodeIsError
 from wsyntree.utils import dotdict
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
@@ -55,6 +56,8 @@ def build_networkx_graph(
     ts_id_to_preorder = {}
 
     root = cursor.peek()
+    if root.type == "ERROR":
+        raise RootTreeSitterNodeIsError(f"the file content or language is likely wrong for this parser")
     # ts_id_to_preorder[root.id] = 0
 
     for cur_node in chain([root], cursor):

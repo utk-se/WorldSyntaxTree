@@ -1,4 +1,5 @@
 tree_sitter@git+https://github.com/utk-se/py-tree-sitter.git@master#egg=tree_sitter
+grand-cypher@git+https://github.com/aplbrain/grand-cypher.git@master#egg=grand-cypher
 python-arango
 coloredlogs
 pygit2
