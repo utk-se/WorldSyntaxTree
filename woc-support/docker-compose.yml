@@ -1,0 +1,29 @@
+
+version: '2'
+
+services:
+  wst-jobrunner:
+    build:
+      context: .
+      args:
+        # remember to export these in the shell before build:
+        UNAME: ${USER}
+        GID: ${GID}
+        UID: ${UID}
+    #image: robobenklein/home:latest
+    restart: "no"
+    environment:
+      - OSCAR_TEST=1
+    volumes:
+      - "/da0_data:/da0_data:ro"
+      - "/da1_data:/da1_data:ro"
+      - "/da2_data:/da2_data:ro"
+      - "/da3_data:/da3_data:ro"
+      - "/da4_data:/da4_data:ro"
+      - "/da4_fast:/da4_fast:ro"
+      - "/da5_data:/da5_data:ro"
+      - "/da5_fast:/da5_fast:ro"
+      - "/da7_data:/da7_data:ro"
+      - "/da7_data/WorldSyntaxTree:/da7_data/WorldSyntaxTree" # RW: output in here
+      - "/home/bklein3:/home/bklein3"
+    mem_limit: 16G
