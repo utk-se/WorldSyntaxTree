@@ -26,7 +26,7 @@ class WSTNodeHashV1():
         for node in nodes:
             self._nodes.append(node)
 
-    @functools.cache
+    @functools.lru_cache(maxsize=None) # functools.cache added in 3.9
     def _get_hashable_repr(self):
         s = bytearray(b"WSTNodeHashV1<")
         nodedata = list(map(
