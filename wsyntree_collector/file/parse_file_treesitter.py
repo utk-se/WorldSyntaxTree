@@ -81,14 +81,14 @@ def build_networkx_graph(
             except:
                 log.warn(f"Cannot decode text.")
 
-        log.debug(f"adding node {preorder}: {nn}")
+        #log.debug(f"adding node {preorder}: {nn}")
         # insert node and it's data
         G.add_node(preorder, **nn)
 
         # add the edge
         if cur_node.parent is not None:
             parent_preorder = ts_id_to_preorder[cur_node.parent.id]
-            log.debug(f"connecting node {preorder}, to {parent_preorder}")
+            #log.debug(f"connecting node {preorder}, to {parent_preorder}")
             G.add_edge(
                 parent_preorder,
                 preorder

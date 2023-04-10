@@ -113,6 +113,18 @@ def run_blob(blob_pair):
             if graph.nodes[node]['type'] in FUNCDEF_TYPES:
                 hashed_nodes.append(WSTNodeHashV1(graph, node))
 
+        with outfile.open('wb') as f:
+            for nh in hashed_nodes:
+                f.write(orjson.dumps({
+                    "sha512": nh._get_sha512_hex(),
+                    "blob": blob,
+                    "x1": nh._node_props['x1'],
+                    "x2": nh._node_props['x2'],
+                    "y1": nh._node_props['y1'],
+                    "type": nh._node_props['type'],
+                    "lang": tsabl.lang,
+                }, option=orjson.OPT_APPEND_NEWLINE))
+
     log.debug(f"{blob}: finished")
     return None
 
