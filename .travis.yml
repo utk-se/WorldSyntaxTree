@@ -16,11 +16,11 @@ install:
   - python setup.py install
 
 script:
-  - python tests/test.py -l javascript tests/stuff.js
-  - python tests/test.py -l python tests/stuff.py
-  - python tests/test.py -l ruby tests/stuff.rb
-  - python tests/test.py -l c tests/stuff.c
-  - python tests/test.py -l cpp tests/stuff.cpp
-  - python tests/test.py -l java tests/stuff.java
-  - python tests/test.py -l rust tests/stuff.rs
-  - python tests/test.py -l go tests/stuff.go
+  - wsyntree-collector file -l javascript tests/stuff.js
+  - wsyntree-collector file -l python tests/stuff.py
+  - wsyntree-collector file -l ruby tests/stuff.rb
+  - wsyntree-collector file -l c tests/stuff.c
+  - wsyntree-collector file -l cpp tests/stuff.cpp
+  - wsyntree-collector file -l java tests/stuff.java
+  - wsyntree-collector file -l rust tests/stuff.rs
+  - wsyntree-collector file -l go tests/stuff.go
