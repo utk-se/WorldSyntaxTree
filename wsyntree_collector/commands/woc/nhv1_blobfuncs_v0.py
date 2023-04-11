@@ -9,12 +9,17 @@ import time
 import tempfile
 from typing import List, Optional
 from pathlib import Path, PurePath, PurePosixPath
-from collections import Counter, namedtuple
+from collections import Counter, namedtuple, deque
+from concurrent import futures
 
 import networkx as nx
 from networkx.readwrite import json_graph
 import orjson
 import pebble
+from pebble import concurrent
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
+from pympler import tracker
 
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import (
@@ -126,7 +131,17 @@ def run_blob(blob_pair):
                 }, option=orjson.OPT_APPEND_NEWLINE))
 
     log.debug(f"{blob}: finished")
-    return None
+    return (blob, len(hashed_nodes), outfile)
+
+@concurrent.process(name="wst-nhv1-blobfuncs")
+#@concurrent.thread(name="wst-nhv1-blobfuncs")
+def _rb(*a, **kwa):
+    try:
+        return run_blob(*a, **kwa)
+        #return None
+    except Exception as e:
+        log.trace(log.error, traceback.format_exc())
+        log.error(f"{e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WST Collector NHV1 BlobFuncs v0")
@@ -136,27 +151,31 @@ if __name__ == "__main__":
     if args.verbose:
         log.setLevel(log.DEBUG)
 
-    with pebble.ThreadPool(max_workers=args.workers) as pool:
-        log.info(f"pool workers {args.workers}")
-        try:
-            blobs = all_blobs_iterator(blobfilter=blob_not_yet_processed, filefilter=lambda f: wst_supports_fnames(f))
-            def _rb(*a, **kwa):
-                try:
-                    run_blob(*a, **kwa)
-                except Exception as e:
-                    log.trace(log.error, traceback.format_exc())
-                    log.error(f"{e}")
-            results = pool.map(_rb, blobs)
-            pool.join()
-        except KeyboardInterrupt as e:
-            log.warn(f"Caught KeyboardInterrupt, stopping pool...")
-            pool.close()
-            pool.stop()
-            pool.join()
+    log.info(f"pool workers {args.workers}")
+    q = deque(maxlen=args.workers)
+    try:
+        blobs = tqdm(all_blobs_iterator(blobfilter=blob_not_yet_processed, filefilter=lambda f: wst_supports_fnames(f)))
+        tr = tracker.SummaryTracker()
+        with logging_redirect_tqdm():
+            #log.logger.addHandler(log.OutputHandler(tqdm.write))
+            for blob_pair in blobs:
+                for t in list(q):
+                    if t.done():
+                        t.result()
+                        q.remove(t)
+                if len(q) >= args.workers:
+                    # wait for workers to finish
+                    #log.debug(f"waiting on {len(q)} workers...")
+                    done, not_done = futures.wait(q, return_when=futures.FIRST_COMPLETED)
+                    #log.debug(f"{len(done)} finished")
+                    for t in done:
+                        t.result()
+                        q.remove(t)
 
-        try:
-            for res in results.result():
-                pass
-        except Exception as e:
-            log.trace(log.error, traceback.format_exc())
-            log.error(f"{e}")
+                q.append(_rb(blob_pair))
+    except KeyboardInterrupt as e:
+        log.warn(f"Caught KeyboardInterrupt, stopping ...")
+        tr.print_diff()
+        for t in q:
+            t.cancel()
+        tr.print_diff()
