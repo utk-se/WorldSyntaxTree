@@ -139,9 +139,13 @@ def _rb(*a, **kwa):
     try:
         return run_blob(*a, **kwa)
         #return None
+    except wsyntree.exceptions.RootTreeSitterNodeIsError as e:
+        log.error(f"{e}")
+        return (e, traceback.format_exc(), a, kwa)
     except Exception as e:
         log.trace(log.error, traceback.format_exc())
         log.error(f"{e}")
+        raise e
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WST Collector NHV1 BlobFuncs v0")
