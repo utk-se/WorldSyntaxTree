@@ -21,6 +21,7 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from pympler import tracker
 
+import wsyntree.exceptions
 from wsyntree import log
 from wsyntree.wrap_tree_sitter import (
     TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator, get_TSABL_for_file,
@@ -141,7 +142,7 @@ def _rb(*a, **kwa):
         #return None
     except wsyntree.exceptions.RootTreeSitterNodeIsError as e:
         log.error(f"{e}")
-        return (e, traceback.format_exc(), a, kwa)
+        return (str(e), traceback.format_exc())
     except Exception as e:
         log.trace(log.error, traceback.format_exc())
         log.error(f"{e}")
