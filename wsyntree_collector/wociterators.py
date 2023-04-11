@@ -4,6 +4,7 @@ import gzip
 from pathlib import Path, PurePosixPath
 from collections import namedtuple
 
+from wsyntree import log
 import oscar
 
 blob_sections = 128
