@@ -94,9 +94,9 @@ def blob_not_yet_processed(b):
         return False
     return True
 
-def run_blob(blob_pair):
+def run_blob(blob, content, filenames):
     """"""
-    blob, content, filenames = blob_pair
+    #blob, content, filenames = blob_pair
     if not filenames:
         return (None, "NO_FILENAMES")
     exts = Counter([x.suffix for x in filenames if x.suffix])
@@ -137,11 +137,11 @@ def run_blob(blob_pair):
 
 @concurrent.process(name="wst-nhv1-blobfuncs")
 #@concurrent.thread(name="wst-nhv1-blobfuncs")
-@tenacity.retry(
-    retry=tenacity.retry_if_exception_type(pebble.common.ProcessExpired),
-    stop=tenacity.stop_after_attempt(5),
-    reraise=True,
-)
+# @tenacity.retry( # retry here is not working: the C-level 'munmap' error exits the whole python process
+#     retry=tenacity.retry_if_exception_type(pebble.common.ProcessExpired),
+#     stop=tenacity.stop_after_attempt(5),
+#     reraise=True,
+# )
 def _rb(*a, **kwa):
     try:
         return run_blob(*a, **kwa)
@@ -154,6 +154,8 @@ def _rb(*a, **kwa):
         log.error(f"{e}")
         raise e
 
+blobjob = namedtuple("BlobJob", ["result", "args", "kwargs", "retry"])
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WST Collector NHV1 BlobFuncs v0")
     parser.add_argument("-w", "--workers", type=int, default=4)
@@ -165,25 +167,42 @@ if __name__ == "__main__":
     log.info(f"pool workers {args.workers}")
     q = deque(maxlen=args.workers)
     try:
-        blobs = tqdm(all_blobs_iterator(blobfilter=blob_not_yet_processed, filefilter=lambda f: wst_supports_fnames(f)))
+        blobs = tqdm(all_blobs_iterator(
+            blobfilter=blob_not_yet_processed,
+            filefilter=lambda f: wst_supports_fnames(f)
+        ))
         tr = tracker.SummaryTracker()
-        with logging_redirect_tqdm():
+        def collect_or_retry(job: blobjob):
+            q.remove(job)
+            try:
+                job.result.result()
+            except pebble.common.ProcessExpired as e:
+                log.error(f"{job.args[0]} attempt {job.retry} failed: {e}")
+                q.append(blobjob(
+                    _rb(*job.args),
+                    job.args,
+                    {},
+                    job.retry + 1,
+                ))
+
+        with logging_redirect_tqdm(), log.suppress_stdout():
             #log.logger.addHandler(log.OutputHandler(tqdm.write))
             for blob_pair in blobs:
-                for t in list(q):
-                    if t.done():
-                        t.result()
-                        q.remove(t)
                 if len(q) >= args.workers:
-                    # wait for workers to finish
-                    #log.debug(f"waiting on {len(q)} workers...")
-                    done, not_done = futures.wait(q, return_when=futures.FIRST_COMPLETED)
-                    #log.debug(f"{len(done)} finished")
-                    for t in done:
-                        t.result()
-                        q.remove(t)
+                    # block until slots available
+                    done, not_done = futures.wait([j.result for j in q], return_when=futures.FIRST_COMPLETED)
+                    done = list(done)
+                    for job in list(q): # done jobs
+                        if job.result in done:
+                            collect_or_retry(job)
+                            done.remove(job.result)
+                    assert len(done) == 0
 
-                q.append(_rb(blob_pair))
+                jargs = [*blob_pair]
+                q.append(blobjob(_rb(*jargs), jargs, {}, 0))
+            # finish up:
+            for job in list(q):
+                collect_or_retry(job)
     except KeyboardInterrupt as e:
         log.warn(f"Caught KeyboardInterrupt, stopping ...")
         tr.print_diff()

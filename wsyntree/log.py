@@ -69,7 +69,7 @@ class verbose_logger():
         logger.setLevel(self._prev_state)
 
 
-class supress_stdout():
+class suppress_stdout():
     """
     Stops the logger's StreamHandlers temporarily.
 
@@ -77,7 +77,7 @@ class supress_stdout():
      or other terminal full-windows views.
 
     Use a 'with' statement:
-    with supress_stdout():
+    with suppress_stdout():
         # your code
 
     """
