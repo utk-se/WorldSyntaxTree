@@ -57,7 +57,7 @@ def build_networkx_graph(
 
     root = cursor.peek()
     if root.type == "ERROR":
-        raise RootTreeSitterNodeIsError(f"the file content or language is likely wrong for this parser")
+        raise RootTreeSitterNodeIsError(f"the file content or language is likely wrong for this '{lang.lang}' parser")
     # ts_id_to_preorder[root.id] = 0
 
     for cur_node in chain([root], cursor):

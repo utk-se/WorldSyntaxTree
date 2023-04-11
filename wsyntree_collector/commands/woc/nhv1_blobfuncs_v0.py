@@ -16,6 +16,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 import orjson
 import pebble
+import tenacity
 from pebble import concurrent
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -136,6 +137,11 @@ def run_blob(blob_pair):
 
 @concurrent.process(name="wst-nhv1-blobfuncs")
 #@concurrent.thread(name="wst-nhv1-blobfuncs")
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(pebble.common.ProcessExpired),
+    stop=tenacity.stop_after_attempt(5),
+    reraise=True,
+)
 def _rb(*a, **kwa):
     try:
         return run_blob(*a, **kwa)
