@@ -90,9 +90,16 @@ def output_path_for_blob(b):
     outdir.mkdir(parents=True, exist_ok=True)
     return outdir / f"{b}.jsonl"
 
+def error_path_for_blob(b):
+    d = errors_dir / b[0:2] / b[2:4]
+    return d / f"{b}.txt"
+
 def blob_not_yet_processed(b):
     p = output_path_for_blob(b)
     if p.is_file():
+        return False
+    fail_file = error_path_for_blob(b)
+    if fail_file.is_file():
         return False
     return True
 
@@ -150,7 +157,7 @@ def _rb(*a, **kwa):
         #return None
     except wsyntree.exceptions.RootTreeSitterNodeIsError as e:
         log.debug(f"skip {a[0]}: {e}")
-        return (str(e), traceback.format_exc())
+        raise e
     except Exception as e:
         log.trace(log.error, traceback.format_exc())
         log.error(f"{e}")
@@ -159,13 +166,15 @@ def _rb(*a, **kwa):
 blobjob = namedtuple("BlobJob", ["result", "args", "kwargs", "retry"])
 
 def record_failure(job, e):
-    fail_file = (errors_dir / f"{job.args[0]}.txt")
+    fail_file = error_path_for_blob(job.args[0])
+    fail_file.parent.mkdir(parents=True, exist_ok=True)
     with fail_file.open("at") as f:
         f.write(f"JOB FAILURE REPORT {job.args[0]}:\n")
         f.write(f"Current traceback:\n")
         f.write(traceback.format_exc())
         f.write("\n")
         f.write(str(e))
+        f.write("\n")
     log.warn(f"Wrote failure report to {fail_file}")
     return fail_file
 
@@ -189,6 +198,10 @@ if __name__ == "__main__":
             q.remove(job)
             try:
                 job.result.result()
+            except wsyntree.exceptions.RootTreeSitterNodeIsError as e:
+                # no retry
+                log.warn(f"{job.args[0]}: unable to parse: {e}")
+                record_failure(job, e)
             except pebble.common.ProcessExpired as e:
                 if job.retry > 5:
                     record_failure(job, e)
