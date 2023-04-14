@@ -26,4 +26,4 @@ services:
       - "/da7_data:/da7_data:ro"
       - "/da7_data/WorldSyntaxTree:/da7_data/WorldSyntaxTree" # RW: output in here
       - "/home/bklein3:/home/bklein3"
-    mem_limit: 16G
+    mem_limit: 64G
