@@ -39,6 +39,8 @@ getValuesScript = Path("~/lookup/getValues").expanduser()
 assert getValuesScript.exists(), f"Expected getValues at {getValuesScript}"
 output_root_dir = Path("/da7_data/WorldSyntaxTree/nhv1/blobfuncs_v0")
 assert output_root_dir.is_dir(), f"Output directory does not exist."
+errors_dir = output_root_dir / "errors"
+errors_dir.mkdir(exist_ok=True)
 
 FUNCDEF_TYPES = (
     "function_definition",
@@ -147,7 +149,7 @@ def _rb(*a, **kwa):
         return run_blob(*a, **kwa)
         #return None
     except wsyntree.exceptions.RootTreeSitterNodeIsError as e:
-        log.error(f"{e}")
+        log.debug(f"skip {a[0]}: {e}")
         return (str(e), traceback.format_exc())
     except Exception as e:
         log.trace(log.error, traceback.format_exc())
@@ -155,6 +157,17 @@ def _rb(*a, **kwa):
         raise e
 
 blobjob = namedtuple("BlobJob", ["result", "args", "kwargs", "retry"])
+
+def record_failure(job, e):
+    fail_file = (errors_dir / f"{job.args[0]}.txt")
+    with fail_file.open("at") as f:
+        f.write(f"JOB FAILURE REPORT {job.args[0]}:\n")
+        f.write(f"Current traceback:\n")
+        f.write(traceback.format_exc())
+        f.write("\n")
+        f.write(str(e))
+    log.warn(f"Wrote failure report to {fail_file}")
+    return fail_file
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WST Collector NHV1 BlobFuncs v0")
@@ -177,6 +190,9 @@ if __name__ == "__main__":
             try:
                 job.result.result()
             except pebble.common.ProcessExpired as e:
+                if job.retry > 5:
+                    record_failure(job, e)
+                    return
                 log.error(f"{job.args[0]} attempt {job.retry} failed: {e}")
                 q.append(blobjob(
                     _rb(*job.args),
@@ -206,6 +222,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         log.warn(f"Caught KeyboardInterrupt, stopping ...")
         tr.print_diff()
-        for t in q:
-            t.cancel()
+        for j in q:
+            j.result.cancel()
         tr.print_diff()
