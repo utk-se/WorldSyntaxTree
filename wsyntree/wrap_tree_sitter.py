@@ -60,10 +60,10 @@ class TreeSitterAutoBuiltLanguage():
     def _get_language_library(self):
         try:
             lib = self._get_language_cache_dir() / "language.so"
-            if not lib.exists():
-                repo = self._get_language_repo()
-                repodir = self._get_language_repo_path()
-                with self.ts_lang_cache_lock.acquire(timeout=600):
+            repo = self._get_language_repo()
+            repodir = self._get_language_repo_path()
+            with self.ts_lang_cache_lock.acquire(timeout=600):
+                if not lib.exists():
                     log.warn(f"building library for {self}, this could take a while...")
                     start = time.time()
                     Language.build_library(
