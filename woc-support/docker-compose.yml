@@ -12,6 +12,7 @@ services:
         UID: ${UID}
     #image: robobenklein/home:latest
     restart: "no"
+    command: "sudo /sbin/my_init"
     environment:
       - OSCAR_TEST=1
     volumes:
@@ -26,4 +27,14 @@ services:
       - "/da7_data:/da7_data:ro"
       - "/da7_data/WorldSyntaxTree:/da7_data/WorldSyntaxTree" # RW: output in here
       - "/home/bklein3:/home/bklein3"
+    mem_limit: 512G
+
+  wst-redis:
+    image: redis:7-alpine
     mem_limit: 64G
+
+  wst-telegraf:
+    image: telegraf:latest
+    volumes:
+      - "./telegraf.conf:/etc/telegraf/telegraf.conf:ro"
+    hostname: ${HOSTNAME:-nohost}-wst-telegraf

@@ -7,6 +7,8 @@ import subprocess
 import traceback
 import time
 import tempfile
+import enum
+import os
 from typing import List, Optional
 from pathlib import Path, PurePath, PurePosixPath
 from collections import Counter, namedtuple, deque
@@ -21,6 +23,7 @@ from pebble import concurrent
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from pympler import tracker
+import redis
 
 import wsyntree.exceptions
 from wsyntree import log
@@ -30,10 +33,12 @@ from wsyntree.wrap_tree_sitter import (
 from wsyntree.hashtypes import WSTNodeHashV1
 
 from wsyntree_collector.file.parse_file_treesitter import build_networkx_graph
-from wsyntree_collector.wociterators import all_blobs as all_blobs_iterator
+from wsyntree_collector.wociterators import all_blobs as all_blobs_iterator, BlobStatus
 
 #import oscar
 
+
+tqdm_smoothing_factor = 0.01
 
 getValuesScript = Path("~/lookup/getValues").expanduser()
 assert getValuesScript.exists(), f"Expected getValues at {getValuesScript}"
@@ -50,26 +55,12 @@ FUNCDEF_TYPES = (
     "function_item", # rust
 )
 
-#def get_filenames_for_blob(b: str) -> List[PurePosixPath]:
-#    """Inefficient version: calls lookup b2f because I am lazy to rewrite it in python"""
-#    c = subprocess.run(
-#        ["bash", getValuesScript, "b2f"],
-#        input=f"{b}\n",
-#        text=True,
-#        capture_output=True,
-#    )
-#    if c.returncode != 0:
-#        log.trace(log.warn, c.stdout)
-#        log.trace(log.warn, c.stderr)
-#    c.check_returncode()
-#    lines = c.stdout.strip().split("\n")
-#    if len(lines) != 1:
-#        log.warn(f"getValues gave {len(lines)} lines for {b}")
-#    filenames = []
-#    for line in lines:
-#        for fname in line.split(";")[1:]:
-#            filenames.append(PurePosixPath(fname))
-#    return filenames
+redis_pool = redis.ConnectionPool(
+    host=os.environ.get("WST_REDIS_HOST", "wst-redis"),
+    port=6379, db=0,
+)
+redis_client = redis.Redis(connection_pool=redis_pool)
+redis_decoded = redis.Redis(connection_pool=redis_pool, decode_responses=True)
 
 def wst_supports_fnames(fnames):
     filenames = fnames
@@ -95,14 +86,26 @@ def error_path_for_blob(b):
     return d / f"{b}.txt"
 
 def blob_not_yet_processed(b):
-    p = output_path_for_blob(b)
-    if p.is_file():
+    if redis_decoded.exists(b):
         return False
-    fail_file = error_path_for_blob(b)
-    if fail_file.is_file():
-        return False
+    # these should be set in redis by the --prescan argument:
+    # no longer need to stat every single file over NFS
+    #p = output_path_for_blob(b)
+    #if p.is_file():
+    #    return False
+    #fail_file = error_path_for_blob(b)
+    #if fail_file.is_file():
+    #    return False
     return True
 
+@tenacity.retry(
+    # OSError: [Errno 14] Bad address
+    # not sure what is causing this, but likely related to poor/outdated NFS
+    # or unreliable UTK network
+    retry=tenacity.retry_if_exception_type(OSError),
+    stop=tenacity.stop_after_attempt(3),
+    reraise=True,
+)
 def run_blob(blob, content, filenames):
     """"""
     #blob, content, filenames = blob_pair
@@ -142,6 +145,7 @@ def run_blob(blob, content, filenames):
                 }, option=orjson.OPT_APPEND_NEWLINE))
 
     log.debug(f"{blob}: finished")
+    redis_decoded.set(blob, BlobStatus.done)
     return (blob, len(hashed_nodes), outfile)
 
 @concurrent.process(name="wst-nhv1-blobfuncs")
@@ -166,33 +170,52 @@ def _rb(*a, **kwa):
 blobjob = namedtuple("BlobJob", ["result", "args", "kwargs", "retry"])
 
 def record_failure(job, e):
-    fail_file = error_path_for_blob(job.args[0])
+    blob = job.args[0]
+    fail_file = error_path_for_blob(blob)
     fail_file.parent.mkdir(parents=True, exist_ok=True)
     with fail_file.open("at") as f:
-        f.write(f"JOB FAILURE REPORT {job.args[0]}:\n")
+        f.write(f"JOB FAILURE REPORT {blob}:\n")
         f.write(f"Current traceback:\n")
         f.write(traceback.format_exc())
         f.write("\n")
         f.write(str(e))
         f.write("\n")
     log.warn(f"Wrote failure report to {fail_file}")
+    redis_decoded.set(blob, BlobStatus.errored)
     return fail_file
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WST Collector NHV1 BlobFuncs v0")
     parser.add_argument("-w", "--workers", type=int, default=4)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--prescan", help="Scan output dir before attempting new blobs", action="store_true")
     args = parser.parse_args()
     if args.verbose:
         log.setLevel(log.DEBUG)
+
+    if args.prescan:
+        log.info(f"running prescan ...")
+        for blobfile in tqdm(
+                output_root_dir.glob("*/*/*.jsonl"),
+                desc="scanning existing outputs", unit="blobs",
+                smoothing=tqdm_smoothing_factor,
+            ):
+            redis_decoded.set(blobfile.stem, BlobStatus.done)
+        for errfile in tqdm(
+                errors_dir.glob("*/*/*.txt"), desc="scanning errors",
+                smoothing=tqdm_smoothing_factor,
+            ):
+            redis_decoded.set(errfile.stem, BlobStatus.error)
 
     log.info(f"pool workers {args.workers}")
     q = deque(maxlen=args.workers)
     try:
         blobs = tqdm(all_blobs_iterator(
             blobfilter=blob_not_yet_processed,
-            filefilter=lambda f: wst_supports_fnames(f)
-        ))
+            filefilter=lambda f: wst_supports_fnames(f),
+            tqdm_position=1,
+            redis_cl=redis_decoded,
+        ), desc="blobs processed", unit="blobs", smoothing=tqdm_smoothing_factor, unit_scale=True)
         tr = tracker.SummaryTracker()
         def collect_or_retry(job: blobjob):
             q.remove(job)

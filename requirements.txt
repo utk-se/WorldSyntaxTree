@@ -13,3 +13,4 @@ psutil
 bpython
 orjson>=3.0.0
 networkx[default]
+redis[hiredis]
