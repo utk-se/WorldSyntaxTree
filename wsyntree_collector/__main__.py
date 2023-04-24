@@ -256,6 +256,10 @@ def __main__():
         'file', aliases=[], help="Run WST on a single file")
     commands.file.set_args(cmd_file)
 
+    cmd_node_hash_v1 = subcmds.add_parser(
+        'node_hash_v1', aliases=['nhv1'], help="Hash syntax nodes (V1)")
+    commands.node_hash_v1.set_args(cmd_node_hash_v1)
+
     args = parser.parse_args()
 
     if args.verbose:

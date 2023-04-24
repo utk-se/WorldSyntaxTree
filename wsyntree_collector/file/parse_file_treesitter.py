@@ -8,6 +8,7 @@ from pathlib import Path
 import networkx as nx
 
 from wsyntree import log
+from wsyntree.exceptions import RootTreeSitterNodeIsError
 from wsyntree.utils import dotdict
 from wsyntree.wrap_tree_sitter import TreeSitterAutoBuiltLanguage, TreeSitterCursorIterator
 
@@ -55,6 +56,8 @@ def build_networkx_graph(
     ts_id_to_preorder = {}
 
     root = cursor.peek()
+    if root.type == "ERROR":
+        raise RootTreeSitterNodeIsError(f"the file content or language is likely wrong for this '{lang.lang}' parser")
     # ts_id_to_preorder[root.id] = 0
 
     for cur_node in chain([root], cursor):
@@ -78,15 +81,16 @@ def build_networkx_graph(
             except:
                 log.warn(f"Cannot decode text.")
 
-        log.debug(f"adding node {preorder}: {nn}")
+        #log.debug(f"adding node {preorder}: {nn}")
         # insert node and it's data
-        G.add_node(node_name_prefix + str(preorder), **nn)
+        G.add_node(preorder, **nn)
 
         # add the edge
         if cur_node.parent is not None:
-            log.debug(f"connecting node {preorder}, to id {cur_node.parent.id}")
+            parent_preorder = ts_id_to_preorder[cur_node.parent.id]
+            #log.debug(f"connecting node {preorder}, to {parent_preorder}")
             G.add_edge(
-                ts_id_to_preorder[cur_node.parent.id],
+                parent_preorder,
                 preorder
             )
 

@@ -4,6 +4,7 @@ from typing import AnyStr, Callable
 import functools
 import re
 import time
+import warnings
 
 import pebble
 from tree_sitter import Language, Parser, TreeCursor, Node
@@ -18,6 +19,7 @@ from .constants import wsyntree_langs, wsyntree_file_to_lang
 
 class TreeSitterAutoBuiltLanguage():
     def __init__(self, lang):
+        assert lang in wsyntree_langs, f"{lang} not found or not yet available in WorldSyntaxTree"
         self.lang = lang
         self.parser = None
         self.ts_language = None
@@ -42,6 +44,7 @@ class TreeSitterAutoBuiltLanguage():
             if not repodir.exists():
                 repodir.mkdir(mode=0o770)
                 log.debug(f"cloning treesitter repo for {self}")
+                warnings.warn(f"WorldSyntaxTree cloning parser repo for {self.lang}, this might be slow.")
                 return git.clone_repository(
                     wsyntree_langs[self.lang]["tsrepo"],
                     repodir.resolve()
@@ -56,25 +59,25 @@ class TreeSitterAutoBuiltLanguage():
 
     def _get_language_library(self):
         try:
-            self.ts_lang_cache_lock.acquire(timeout=300)
             lib = self._get_language_cache_dir() / "language.so"
             repo = self._get_language_repo()
             repodir = self._get_language_repo_path()
-            if not lib.exists():
-                log.warn(f"building library for {self}, this could take a while...")
-                start = time.time()
-                Language.build_library(
-                    str(lib.resolve()),
-                    [repodir]
-                )
-                log.debug(f"library build of {self} completed after {round(time.time() - start)} seconds")
+            with self.ts_lang_cache_lock.acquire(timeout=600):
+                if not lib.exists():
+                    log.warn(f"building library for {self}, this could take a while...")
+                    start = time.time()
+                    Language.build_library(
+                        str(lib.resolve()),
+                        [repodir]
+                    )
+                    log.debug(f"library build of {self} completed after {round(time.time() - start)} seconds")
             return lib
         except filelock.Timeout as e:
-            log.error(f"Failed to acquire lock on TSABL {self}")
+            log.error(f"Failed to acquire lock on TSABL {self} (needed to build language lib)")
             log.debug(f"lock object is {self.ts_lang_cache_lock}")
             raise e
-        finally:
-            self.ts_lang_cache_lock.release()
+        #finally:
+        #    self.ts_lang_cache_lock.release()
 
     def _get_ts_language(self):
         if self.ts_language is not None:

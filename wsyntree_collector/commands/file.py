@@ -1,4 +1,5 @@
 
+import sys
 from pathlib import Path
 
 import networkx as nx
@@ -45,13 +46,14 @@ def run(args):
 
     if args.output:
         if str(args.output) == "-":
-            raise NotImplementedError(f"output to stdout not yet supported")
-
-        log.info(f"Writing to {args.output} ...")
-        if str(args.output).endswith(".graphml"):
+            #raise NotImplementedError(f"output to stdout not yet supported")
+            sys.stdout.buffer.write(orjson.dumps(tree_data, option=orjson.OPT_APPEND_NEWLINE))
+        elif str(args.output).endswith(".graphml"):
+            log.info(f"Writing to {args.output} ...")
             log.info("Writing GraphML")
             nx.write_graphml(graph, args.output)
         else:
+            log.info(f"Writing to {args.output} ...")
             with args.output.open('wb') as f:
                 f.write(orjson.dumps(
                     tree_data, option=orjson.OPT_APPEND_NEWLINE
