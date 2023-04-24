@@ -148,7 +148,7 @@ def run_blob(blob, content, filenames):
     redis_decoded.set(blob, BlobStatus.done)
     return (blob, len(hashed_nodes), outfile)
 
-@concurrent.process(name="wst-nhv1-blobfuncs")
+@concurrent.process(name="wst-nhv1-blobfuncs", timeout=60*60)
 #@concurrent.thread(name="wst-nhv1-blobfuncs")
 # @tenacity.retry( # retry here is not working: the C-level 'munmap' error exits the whole python process
 #     retry=tenacity.retry_if_exception_type(pebble.common.ProcessExpired),
@@ -236,6 +236,9 @@ if __name__ == "__main__":
                     {},
                     job.retry + 1,
                 ))
+            except concurrent.futures.TimeoutError as e:
+                log.error(f"{job.args[0]} process timed out")
+                record_failure(job, e)
 
         with logging_redirect_tqdm(), log.suppress_stdout():
             #log.logger.addHandler(log.OutputHandler(tqdm.write))

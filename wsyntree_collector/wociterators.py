@@ -30,8 +30,9 @@ class BlobStatus(str, enum.Enum): # enum.StrEnum added in 3.11
 
 def binary_line_iterator(open_file, max_buffer_size=GIBIBYTE):
     """only yields lines that are decodable"""
-    #chunksize = 4096
-    chunksize = 4*MEBIBYTE
+    # magic performance number: wanting the average buffer.split() size
+    # idxf_1: 10849129529/97563749 = 111.2 avg bytes per line
+    chunksize = 256
     lineno = 0
     buffer = bytearray()
     for block in iter(lambda: open_file.read(chunksize), b""):
@@ -98,7 +99,8 @@ def iter_blobs(
         for idx_line in bin_line_it:
             fields = idx_line.rstrip().split(";")
             _hash = fields[3]
-            filenames = tuple(PurePosixPath(x) for x in fields[4:])
+            if not blobfilter(_hash):
+                continue
             offset = int(fields[1])
             length = int(fields[2])
             if length >= max_blob_size:
@@ -106,8 +108,7 @@ def iter_blobs(
                 if redis_cl:
                     redis_cl.set(_hash, BlobStatus.too_large)
                 continue
-            if not blobfilter(_hash):
-                continue
+            filenames = tuple(PurePosixPath(x) for x in fields[4:])
             if not filefilter(filenames):
                 if redis_cl:
                     redis_cl.set(_hash, BlobStatus.not_supported)
